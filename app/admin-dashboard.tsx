@@ -284,8 +284,14 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => Promise<v
     <main className="min-h-screen">
       <header className="flex h-[70px] items-center justify-between border-b border-[#e9ebe4] bg-[rgba(255,255,255,.82)] px-8 motion-safe:animate-fade-in min-[1124px]:px-[calc((100vw-1060px)/2)] max-[760px]:h-[62px] max-[760px]:px-5">
         <a className="brand [display:inline-flex] [align-items:center] [gap:10px]" href="#" aria-label="Suara Mandara">
-          <span className="brand-mark [width:30px] [height:30px] [border-radius:10px_10px_10px_3px] [display:grid] [place-items:center] [background:#c93246] [transform:rotate(-8deg)] [&_>_span]:[width:12px] [&_>_span]:[height:12px] [&_>_span]:[border:2px_solid_var(--lime)] [&_>_span]:[border-radius:50%] [&_>_span]:[position:relative] [&_>_span::after]:[content:''] [&_>_span::after]:[width:4px] [&_>_span::after]:[height:4px] [&_>_span::after]:[border-radius:50%] [&_>_span::after]:[position:absolute] [&_>_span::after]:[background:#fff] [&_>_span::after]:[left:2px] [&_>_span::after]:[top:2px] [&_>_span]:[border-color:#fff]"><span /></span>
-          <span className="brand-copy [font:800_20px_'Manrope',_sans-serif] [letter-spacing:-1.2px] [&_>_span]:[color:#c93246]">suara<span>mandara</span></span>
+          <Image
+            className="[width:34px] [height:34px] [border-radius:8px] [object-fit:cover]"
+            src="/logo-suara-mandara.png"
+            alt=""
+            width={34}
+            height={34}
+          />
+          <span className="brand-copy [font:800_20px_'Manrope',_sans-serif] [letter-spacing:-1.2px] [&_>_span]:[color:#c93246]">Suara<span>Mandara</span></span>
         </a>
         <button className="profile-button [display:flex] [align-items:center] [gap:9px] [padding:0] [border:0] [background:transparent] [text-align:left] [cursor:pointer]" onClick={() => void handleLogout()} title="Keluar">
           <span className="profile-avatar [width:32px] [height:32px] [border-radius:50%] [display:grid] [place-items:center] [color:#315940] [background:#e6edda] [font-size:10px] [font-weight:700]">AD</span>

@@ -574,9 +574,9 @@ export default function Home() {
         <div className="w-[min(1054px,100%)]">
           <a className="brand [display:inline-flex] [align-items:center] [gap:10px]" href="#" aria-label="Suara Mandara">
             <Image
-              className="login-brand-logo [width:58px] [height:58px] [padding:3px] [border:1px_solid_rgba(164,_119,_43,_.48)] [border-radius:50%] [background:#fff] [box-shadow:0_5px_16px_rgba(111,_32,_39,_.12)] [object-fit:contain] max-[760px]:[width:52px] max-[760px]:[height:52px]"
-              src="/logo-smk-negeri-bali-mandara.png"
-              alt="Lambang SMK Negeri Bali Mandara"
+              className="login-brand-logo [width:58px] [height:58px] [border:1px_solid_rgba(164,_119,_43,_.48)] [border-radius:12px] [background:#f2f7f7] [box-shadow:0_5px_16px_rgba(111,_32,_39,_.12)] [object-fit:cover] max-[760px]:[width:52px] max-[760px]:[height:52px]"
+              src="/logo-suara-mandara.png"
+              alt="Logo Suara Mandara"
               width={64}
               height={64}
               priority
@@ -743,8 +743,14 @@ export default function Home() {
     <main className="min-h-screen">
       <header className="flex h-[70px] items-center justify-between border-b border-[#e9ebe4] bg-[rgba(255,255,255,.82)] px-8 motion-safe:animate-fade-in min-[1124px]:px-[calc((100vw-1060px)/2)] max-[760px]:h-[62px] max-[760px]:px-5">
         <a className="brand [display:inline-flex] [align-items:center] [gap:10px]" href="#" aria-label="Suara Mandara">
-          <span className="brand-mark [width:30px] [height:30px] [border-radius:10px_10px_10px_3px] [display:grid] [place-items:center] [background:#c93246] [transform:rotate(-8deg)] [&_>_span]:[width:12px] [&_>_span]:[height:12px] [&_>_span]:[border:2px_solid_var(--lime)] [&_>_span]:[border-radius:50%] [&_>_span]:[position:relative] [&_>_span::after]:[content:''] [&_>_span::after]:[width:4px] [&_>_span::after]:[height:4px] [&_>_span::after]:[border-radius:50%] [&_>_span::after]:[position:absolute] [&_>_span::after]:[background:#fff] [&_>_span::after]:[left:2px] [&_>_span::after]:[top:2px] [&_>_span]:[border-color:#fff]"><span /></span>
-          <span className="brand-copy [font:800_20px_'Manrope',_sans-serif] [letter-spacing:-1.2px] [&_>_span]:[color:#c93246]">suara<span>mandara</span></span>
+          <Image
+            className="[width:34px] [height:34px] [border-radius:8px] [object-fit:cover]"
+            src="/logo-suara-mandara.png"
+            alt=""
+            width={34}
+            height={34}
+          />
+          <span className="brand-copy [font:800_20px_'Manrope',_sans-serif] [letter-spacing:-1.2px] [&_>_span]:[color:#c93246]">Suara<span>Mandara</span></span>
         </a>
         <span className="header-election [display:flex] [align-items:center] [gap:9px] [color:#7d877f] [font-size:9px] [font-weight:700] [letter-spacing:.9px] [&_.live-dot]:[width:6px] [&_.live-dot]:[height:6px] [&_.live-dot]:[background:#90ad61] [&_.live-dot]:[box-shadow:0_0_0_3px_#eff4e5] max-[760px]:[display:none]"><span className="live-dot [width:7px] [height:7px] [display:inline-block] [flex:0_0_auto] [border-radius:50%] [background:#cbe67c] [box-shadow:0_0_0_3px_rgba(203,_230,_124,_.13)]" /> PEMILIHAN SISWA 2026/2027</span>
         <button className="profile-button [display:flex] [align-items:center] [gap:9px] [padding:0] [border:0] [background:transparent] [text-align:left] [cursor:pointer]" onClick={() => {
