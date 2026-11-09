@@ -86,7 +86,8 @@ export async function PUT(request: Request) {
       const submittedCandidates = submittedOrganizations[organizationId];
       if (
         !Array.isArray(submittedCandidates) ||
-        submittedCandidates.length !== candidateIds[organizationId].length
+        submittedCandidates.length < 2 ||
+        submittedCandidates.length > candidateIds[organizationId].length
       ) {
         return NextResponse.json({ error: "Jumlah pasangan calon tidak valid." }, { status: 400 });
       }
@@ -243,6 +244,9 @@ export async function PUT(request: Request) {
         const votes = database
           .prepare("SELECT COUNT(*) AS total FROM ballots WHERE organization_id = ?")
           .get(organizationId) as { total: number };
+        const activeCount = database
+          .prepare("SELECT candidate_count FROM election_candidate_counts WHERE organization_id = ?")
+          .get(organizationId) as { candidate_count: number };
         const existingCandidates = database
           .prepare(
             `SELECT candidate_id, candidate_number, candidate_name, vice_name
@@ -261,15 +265,16 @@ export async function PUT(request: Request) {
 
         if (
           votes.total > 0 &&
-          configurations[organizationId].some((candidate) => {
-            const existing = existingById.get(candidate.id);
-            return (
-              !existing ||
-              existing.candidate_number !== candidate.number ||
-              existing.candidate_name !== candidate.name ||
-              existing.vice_name !== candidate.viceName
-            );
-          })
+          (configurations[organizationId].length !== activeCount.candidate_count ||
+            configurations[organizationId].some((candidate) => {
+              const existing = existingById.get(candidate.id);
+              return (
+                !existing ||
+                existing.candidate_number !== candidate.number ||
+                existing.candidate_name !== candidate.name ||
+                existing.vice_name !== candidate.viceName
+              );
+            }))
         ) {
           database.exec("ROLLBACK");
           transactionOpen = false;
@@ -293,6 +298,13 @@ export async function PUT(request: Request) {
             throw new Error(`Kandidat ${candidate.id} tidak ditemukan di database.`);
           }
         }
+        database
+          .prepare(
+            `UPDATE election_candidate_counts
+             SET candidate_count = ?
+             WHERE organization_id = ?`,
+          )
+          .run(configurations[organizationId].length, organizationId);
       }
 
       const upsertCandidateDetails = database.prepare(

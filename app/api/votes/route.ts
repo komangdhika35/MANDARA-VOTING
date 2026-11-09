@@ -120,7 +120,15 @@ export async function POST(request: Request) {
       transactionOpen = false;
       return NextResponse.json({ error: "Kandidat tidak valid." }, { status: 400 });
     }
-    if (!candidateIds[organizationId].some((id) => id === body.candidateId)) {
+    const activeCount = database
+      .prepare("SELECT candidate_count FROM election_candidate_counts WHERE organization_id = ?")
+      .get(organizationId) as { candidate_count: number } | undefined;
+    if (
+      !activeCount ||
+      !candidateIds[organizationId]
+        .slice(0, activeCount.candidate_count)
+        .some((id) => id === body.candidateId)
+    ) {
       database.exec("ROLLBACK");
       transactionOpen = false;
       return NextResponse.json({ error: "Kandidat tidak valid." }, { status: 400 });

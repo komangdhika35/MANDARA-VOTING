@@ -61,6 +61,14 @@ CREATE TABLE IF NOT EXISTS election_candidates (
   vice_name TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS election_candidate_counts (
+  organization_id TEXT PRIMARY KEY NOT NULL CHECK (organization_id IN ('osis', 'ky')),
+  candidate_count INTEGER NOT NULL CHECK (candidate_count BETWEEN 2 AND 3)
+);
+
+INSERT OR IGNORE INTO election_candidate_counts (organization_id, candidate_count)
+VALUES ('osis', 2), ('ky', 2);
+
 CREATE TABLE IF NOT EXISTS election_candidate_details (
   candidate_id TEXT PRIMARY KEY NOT NULL REFERENCES election_candidates(candidate_id) ON DELETE CASCADE,
   photo_data_url TEXT NOT NULL DEFAULT '',
