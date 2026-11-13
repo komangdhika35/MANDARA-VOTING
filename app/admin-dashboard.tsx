@@ -707,7 +707,7 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => Promise<v
           <span className="admin-total-caption [margin-left:auto] [color:#9a8c8d] [font-size:9px] max-[760px]:[max-width:140px] max-[760px]:[text-align:right] max-[760px]:[line-height:1.5] max-[420px]:[max-width:115px] max-[420px]:[font-size:8px]">Data diambil langsung dari database SQLite</span>
         </section>
         <p className="admin-privacy-notice [margin:11px_0_0] [padding:10px_12px] [border:1px_solid_#f1e2c6] [border-radius:8px] [color:#795a2d] [background:#fffaf0] [font-size:9px] [line-height:1.55]" role="note">
-          Privasi: halaman ini menampilkan nama siswa beserta pilihannya. Batasi akses halaman ini hanya untuk admin.
+          Privasi pemilih dijaga. Halaman ini hanya menampilkan rekap suara agregat tanpa identitas atau pilihan individu.
         </p>
 
         <section className="results-grid [display:grid] [grid-template-columns:repeat(3,_minmax(0,_1fr))] [gap:15px] [margin-top:17px] max-[760px]:[grid-template-columns:1fr] max-[760px]:[gap:10px]" aria-label="Rekap suara tiap organisasi" aria-busy={loading}>
@@ -802,6 +802,7 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => Promise<v
                   })}
                 </div>
                 )}
+                <div hidden>
                 <details className="voter-details [margin-top:13px] [border-top:1px_solid_#f1f0eb] [color:#566259] [font-size:9px] [&_summary]:[padding:11px_0_0] [&_summary]:[color:#566259] [&_summary]:[font-weight:700] [&_summary]:[cursor:pointer] [&[open]_>_ul]:[animation:details-in_350ms_cubic-bezier(.2,.75,.25,1)_both] [&[open]_>_p]:[animation:details-in_350ms_cubic-bezier(.2,.75,.25,1)_both] [&_ul]:[display:grid] [&_ul]:[gap:7px] [&_ul]:[max-height:210px] [&_ul]:[overflow-y:auto] [&_ul]:[margin:10px_0_0] [&_ul]:[padding:0_2px_0_14px] [&_li]:[padding-left:1px] [&_li]:[line-height:1.45] [&_li_span]:[display:block] [&_li_strong]:[display:block] [&_li_strong]:[color:#a93646] [&_li_strong]:[font-size:8px] [&_li_strong]:[font-weight:600] [&_p]:[margin:9px_0_0] [&_p]:[color:#929a91] [&_.admin-voter-row]:[display:flex] [&_.admin-voter-row]:[align-items:center] [&_.admin-voter-row]:[justify-content:space-between] [&_.admin-voter-row]:[gap:8px] [&_.admin-voter-row]:[padding:7px_0] [&_.admin-voter-row]:[border-bottom:1px_solid_#f4f1ed] [&_.admin-voter-row]:[list-style:none] [&_.admin-voter-copy_>_strong]:[color:#566259] [&_.admin-voter-copy_>_strong]:[font-size:9px] [&_.admin-voter-copy_>_span]:[margin-top:2px] [&_.admin-voter-copy_>_span]:[color:#a93646] [&_.admin-voter-copy_>_span]:[font-size:8px]">
                   <summary>Pemilih dan pilihannya ({organization.voters.length})</summary>
                   {organization.voters.length > 0 ? (
@@ -866,6 +867,7 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => Promise<v
                     <p className="motion-safe:animate-content-in">Semua pemilih terdaftar sudah memilih.</p>
                   )}
                 </details>
+                </div>
                 {leader && organization.totalVotes > 0 && leader.votes > 0 && (
                   <p className="results-leader [margin:16px_0_0] [padding-top:11px] [border-top:1px_solid_#f1f0eb] [color:#90978e] [font-size:8px] [&_strong]:[color:#665155] [&_strong]:[font-weight:700]">
                     Suara terbanyak sementara: <strong>{leader.name} &amp; {leader.viceName}</strong>
