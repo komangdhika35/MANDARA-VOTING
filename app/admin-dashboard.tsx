@@ -25,12 +25,20 @@ type OrganizationResult = {
   hasAnyVotes: boolean;
   candidates: CandidateResult[];
   positions: PositionResult[];
-  voters: { nis: string; name: string; candidateName: string }[];
+  voters: { nis: string; name: string; candidateName?: string }[];
   abstainers: string[];
+};
+
+type VoterResult = {
+  nis: string;
+  name: string;
+  participatedOrganizations: OrganizationId[];
+  searchIdentifiers: string[];
 };
 
 type Results = {
   organizations: OrganizationResult[];
+  voters: VoterResult[];
   totalVotes: number;
 };
 
@@ -54,7 +62,7 @@ function readCandidatePhoto(file: File): Promise<string> {
 }
 
 export default function AdminDashboard({ onLogout }: { onLogout: () => Promise<void> }) {
-  const [activeAdminPage, setActiveAdminPage] = useState<"results" | "candidates">("results");
+  const [activeAdminPage, setActiveAdminPage] = useState<"results" | "voters" | "candidates">("results");
   const [results, setResults] = useState<Results | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -62,13 +70,14 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => Promise<v
   const [resetTarget, setResetTarget] = useState<{
     nis: string;
     name: string;
-    candidateName: string;
     organizationId: string;
     organizationName: string;
   } | null>(null);
   const [resetting, setResetting] = useState(false);
   const [resetError, setResetError] = useState("");
   const [resetMessage, setResetMessage] = useState("");
+  const [voterSearch, setVoterSearch] = useState("");
+  const [voterCategory, setVoterCategory] = useState<"voted" | "not-voted">("voted");
   const [candidateConfigurations, setCandidateConfigurations] =
     useState<CandidateConfigurations | null>(null);
   const [mpkMembers, setMpkMembers] = useState<
@@ -254,6 +263,10 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => Promise<v
           ? `Semua pilihan ${resetTarget.name} sudah direset. Siswa dapat masuk kembali dan memilih ulang dari awal.`
           : `Suara ${resetTarget.name} untuk ${resetTarget.organizationName} sudah direset. Siswa perlu masuk kembali untuk memilih ulang.`,
       );
+      if (resetTarget.organizationId === "all") {
+        setVoterCategory("not-voted");
+        setVoterSearch(resetTarget.nis);
+      }
       setResetTarget(null);
       await loadResults();
     } catch (resetFailure) {
@@ -280,6 +293,18 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => Promise<v
     };
   }, [loadCandidates, loadResults]);
 
+  const normalizedVoterSearch = voterSearch.trim().toLocaleLowerCase();
+  const filteredVoters = (results?.voters ?? []).filter((voter) => {
+    const matchesSearch =
+      !normalizedVoterSearch ||
+      voter.name.toLocaleLowerCase().includes(normalizedVoterSearch) ||
+      voter.searchIdentifiers.some((identifier) =>
+        identifier.toLocaleLowerCase().includes(normalizedVoterSearch),
+      );
+    const hasVoted = voter.participatedOrganizations.length > 0;
+    return matchesSearch && (voterCategory === "voted" ? hasVoted : !hasVoted);
+  });
+
   return (
     <main className="min-h-screen">
       <header className="flex h-[70px] items-center justify-between border-b border-[#e9ebe4] bg-[rgba(255,255,255,.82)] px-8 motion-safe:animate-fade-in min-[1124px]:px-[calc((100vw-1060px)/2)] max-[760px]:h-[62px] max-[760px]:px-5">
@@ -304,14 +329,22 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => Promise<v
         <section className="admin-welcome motion-safe:animate-rise-in [display:flex] [align-items:center] [justify-content:space-between] [gap:18px] [padding:35px_0_23px] [&_h1]:[margin:8px_0_4px] [&_h1]:[color:#27392f] [&_h1]:[font:800_29px_'Nunito',_'DM_Sans',_sans-serif] [&_h1]:[letter-spacing:-.8px] [&_p]:[margin:0] [&_p]:[color:#838d84] [&_p]:[font-size:11px] max-[760px]:[padding:25px_0_18px] max-[420px]:[&_h1]:[font-size:25px]">
           <div>
             <span className="eyebrow dark-eyebrow [font-size:9px] [font-weight:700] [letter-spacing:1.15px] [color:#849177]"><span className="live-dot [width:7px] [height:7px] [display:inline-block] [flex:0_0_auto] [border-radius:50%] [background:#cbe67c] [box-shadow:0_0_0_3px_rgba(203,_230,_124,_.13)]" /> HALAMAN ADMIN</span>
-            <h1>{activeAdminPage === "results" ? "Rekap suara" : "Pengaturan kandidat"}</h1>
+            <h1>
+              {activeAdminPage === "results"
+                ? "Rekap suara"
+                : activeAdminPage === "voters"
+                  ? "Daftar pemilih"
+                  : "Pengaturan kandidat"}
+            </h1>
             <p>
               {activeAdminPage === "results"
                 ? "Ringkasan pilihan untuk setiap organisasi."
-                : "Kelola daftar kandidat untuk setiap organisasi."}
+                : activeAdminPage === "voters"
+                  ? "Kelola kehadiran pemilih tanpa melihat pilihan individu."
+                  : "Kelola daftar kandidat untuk setiap organisasi."}
             </p>
           </div>
-          {activeAdminPage === "results" && (
+          {activeAdminPage !== "candidates" && (
             <button className="secondary-button refresh-button transition-transform duration-200 hover:-translate-y-0.5 active:scale-[.98] motion-reduce:transform-none [&:focus-visible]:[outline:3px_solid_#b5cd79] [&:focus-visible]:[outline-offset:3px] [height:42px] [border:1px_solid_#e4e8df] [border-radius:7px] [color:#536454] [background:#fff] [font-size:10px] [font-weight:600] [cursor:pointer] [display:inline-flex] [align-items:center] [gap:8px] [padding:0_14px] [&:disabled]:[opacity:.65] [&:disabled]:[cursor:wait] [&_span]:[font-size:16px]" onClick={() => void loadResults()} disabled={loading}>
               <span className={loading ? "motion-safe:animate-spin" : ""} aria-hidden="true">↻</span> {loading ? "Memuat..." : "Perbarui rekap"}
             </button>
@@ -327,6 +360,15 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => Promise<v
             onClick={() => setActiveAdminPage("results")}
           >
             Rekap suara
+          </button>
+          <button
+            id="admin-voters-tab"
+            className={`transition-colors duration-200 motion-reduce:transition-none ${activeAdminPage === "voters" ? "active" : ""}`}
+            type="button"
+            aria-pressed={activeAdminPage === "voters"}
+            onClick={() => setActiveAdminPage("voters")}
+          >
+            Daftar pemilih
           </button>
           <button
             id="admin-candidates-tab"
@@ -691,6 +733,97 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => Promise<v
         </section>
 
         <section
+          id="admin-voters-panel"
+          key={`voters-${activeAdminPage}`}
+          className="admin-page-panel motion-safe:animate-content-in [&[hidden]]:[display:none]"
+          aria-labelledby="admin-voters-tab"
+          hidden={activeAdminPage !== "voters"}
+        >
+          {error && <p className="form-error app-error [margin:-7px_0_10px] [color:#b6473d] [font-size:10px] [width:fit-content] [margin:14px_0_0] [padding:9px_12px] [border:1px_solid_#f0d7d9] [border-radius:6px] [background:#fff7f7]" role="alert">{error}</p>}
+          {resetError && <p className="form-error app-error [margin:-7px_0_10px] [color:#b6473d] [font-size:10px] [width:fit-content] [margin:14px_0_0] [padding:9px_12px] [border:1px_solid_#f0d7d9] [border-radius:6px] [background:#fff7f7]" role="alert">{resetError}</p>}
+          {resetMessage && <p className="admin-reset-notice [margin:12px_0] [padding:10px_12px] [border:1px_solid_#dce9ce] [border-radius:7px] [color:#4a693c] [background:#f5faef] [font-size:10px] [line-height:1.6]" role="status">{resetMessage}</p>}
+          <div className="candidate-management-heading [display:flex] [align-items:center] [justify-content:space-between] [gap:16px] [padding:10px_0_16px] [&_h2]:[margin:7px_0_4px] [&_h2]:[color:#27392f] [&_h2]:[font:800_20px_'Nunito',_'DM_Sans',_sans-serif] [&_p]:[margin:0] [&_p]:[color:#838d84] [&_p]:[font-size:10px] max-[760px]:[align-items:flex-start] max-[760px]:[flex-direction:column]">
+            <div>
+              <span className="eyebrow dark-eyebrow [font-size:9px] [font-weight:700] [letter-spacing:1.15px] [color:#849177]">ADMINISTRASI PEMILIHAN</span>
+              <h2>Daftar pemilih</h2>
+                  <p>Cari pemilih berdasarkan nama atau NIS.</p>
+            </div>
+          </div>
+              <div className="[display:flex] [align-items:center] [justify-content:space-between] [gap:12px] [margin-bottom:12px] max-[600px]:[align-items:stretch] max-[600px]:[flex-direction:column]">
+                <label className="[position:relative] [flex:1] [max-width:420px] max-[600px]:[max-width:none]">
+                  <span className="sr-only">Cari nama atau NIS pemilih</span>
+                  <input
+                    type="search"
+                    value={voterSearch}
+                    onChange={(event) => setVoterSearch(event.target.value)}
+                    placeholder="Cari nama atau NIS..."
+                    className="[width:100%] [height:40px] [padding:0_12px] [border:1px_solid_#e4e8df] [border-radius:7px] [color:#34483e] [background:#fff] [font:inherit] [font-size:10px] [&:focus]:[border-color:#b83243] [&:focus]:[outline:2px_solid_rgba(184,_50,_67,_.12)]"
+                  />
+                </label>
+                <div className="[display:flex] [gap:4px] [padding:3px] [border:1px_solid_#e9ebe4] [border-radius:7px] [background:#fff]" role="group" aria-label="Filter status pemilih">
+                  <button
+                    type="button"
+                    aria-pressed={voterCategory === "voted"}
+                    onClick={() => setVoterCategory("voted")}
+                    className={`[min-height:32px] [padding:0_10px] [border:0] [border-radius:5px] [font-size:9px] [font-weight:700] [cursor:pointer] ${voterCategory === "voted" ? "[color:#a93646] [background:#fff0f1]" : "[color:#78837a] [background:transparent]"}`}
+                  >Sudah memilih</button>
+                  <button
+                    type="button"
+                    aria-pressed={voterCategory === "not-voted"}
+                    onClick={() => setVoterCategory("not-voted")}
+                    className={`[min-height:32px] [padding:0_10px] [border:0] [border-radius:5px] [font-size:9px] [font-weight:700] [cursor:pointer] ${voterCategory === "not-voted" ? "[color:#a93646] [background:#fff0f1]" : "[color:#78837a] [background:transparent]"}`}
+                  >Belum memilih</button>
+                </div>
+              </div>
+              <section className="[overflow:hidden] [border:1px_solid_#e9ebe4] [border-radius:8px] [background:#fff]" aria-label="Daftar status pemilih" aria-busy={loading}>
+                <div className="[display:flex] [align-items:center] [justify-content:space-between] [gap:12px] [padding:10px_14px] [border-bottom:1px_solid_#f0f0eb] [color:#939b92] [font-size:9px]">
+                  <span>{filteredVoters.length} dari {results?.voters.length ?? 0} pemilih</span>
+                  <span>Pilihan individu tidak ditampilkan</span>
+                </div>
+                {filteredVoters.length > 0 ? (
+                  <ul className="[margin:0] [padding:0_14px] [list-style:none]">
+                    {filteredVoters.map((voter) => {
+                      const hasParticipated = voter.participatedOrganizations.length > 0;
+                      return (
+                        <li className="[display:flex] [align-items:center] [justify-content:space-between] [gap:14px] [padding:11px_0] [border-bottom:1px_solid_#f4f1ed] max-[600px]:[align-items:flex-start] max-[600px]:[flex-direction:column]" key={voter.nis}>
+                          <div className="[min-width:0] [flex:1]">
+                            <strong className="[display:block] [overflow-wrap:anywhere] [color:#34483e] [font-size:10px]">{voter.name}</strong>
+                            <span className={`[display:inline-block] [margin-top:5px] [font-size:8px] [font-weight:600] ${hasParticipated ? "[color:#43634a]" : "[color:#8a6c38]"}`}>
+                              {hasParticipated ? "Sudah memilih" : "Belum memilih"}
+                            </span>
+                          </div>
+                          {hasParticipated && (
+                            <button
+                              type="button"
+                              className="reset-vote-button [min-height:32px] [flex:0_0_auto] [padding:0_10px] [border:1px_solid_#f0d7d9] [border-radius:5px] [color:#ae3443] [background:#fff7f7] [font-size:8px] [font-weight:700] [cursor:pointer] [&:hover:not(:disabled)]:[border-color:#dfabb0] [&:hover:not(:disabled)]:[background:#ffeff0] [&:disabled]:[opacity:.55] [&:disabled]:[cursor:not-allowed]"
+                              disabled={resetting}
+                              onClick={() => {
+                                setResetError("");
+                                setResetTarget({
+                                  nis: voter.nis,
+                                  name: voter.name,
+                                  organizationId: "all",
+                                  organizationName: "semua organisasi",
+                                });
+                              }}
+                              aria-label={`Reset semua suara ${voter.name}`}
+                            >
+                              Reset
+                            </button>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                ) : (
+                  <p className="[margin:0] [padding:20px_14px] [color:#929a91] [font-size:10px]">
+                    {loading ? "Memuat daftar pemilih..." : "Tidak ada pemilih yang cocok dengan pencarian ini."}
+                  </p>
+                )}
+          </section>
+        </section>
+
+        <section
           id="admin-results-panel"
           key={`results-${activeAdminPage}`}
           className="admin-page-panel motion-safe:animate-content-in [&[hidden]]:[display:none]"
@@ -707,7 +840,7 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => Promise<v
           <span className="admin-total-caption [margin-left:auto] [color:#9a8c8d] [font-size:9px] max-[760px]:[max-width:140px] max-[760px]:[text-align:right] max-[760px]:[line-height:1.5] max-[420px]:[max-width:115px] max-[420px]:[font-size:8px]">Data diambil langsung dari database SQLite</span>
         </section>
         <p className="admin-privacy-notice [margin:11px_0_0] [padding:10px_12px] [border:1px_solid_#f1e2c6] [border-radius:8px] [color:#795a2d] [background:#fffaf0] [font-size:9px] [line-height:1.55]" role="note">
-          Privasi pemilih dijaga. Halaman ini hanya menampilkan rekap suara agregat tanpa identitas atau pilihan individu.
+          Nama ditampilkan hanya untuk mencatat partisipasi dan mengelola reset. Pilihan setiap pemilih tidak ditampilkan atau dihubungkan dengan hasil.
         </p>
 
         <section className="results-grid [display:grid] [grid-template-columns:repeat(3,_minmax(0,_1fr))] [gap:15px] [margin-top:17px] max-[760px]:[grid-template-columns:1fr] max-[760px]:[gap:10px]" aria-label="Rekap suara tiap organisasi" aria-busy={loading}>
@@ -739,7 +872,15 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => Promise<v
                 </header>
                 {organization.positions.length > 0 ? (
                   <div className="mpk-results-positions [display:grid] [gap:14px]">
-                    {organization.positions.map((position, positionIndex) => (
+                    {organization.positions.map((position, positionIndex) => {
+                      const highestVotes = Math.max(
+                        0,
+                        ...position.candidates.map((candidate) => candidate.votes),
+                      );
+                      const leaders = position.candidates.filter(
+                        (candidate) => candidate.votes === highestVotes && highestVotes > 0,
+                      );
+                      return (
                       <section
                         className="mpk-results-position motion-safe:animate-content-in [padding-top:14px] [border-bottom:1px_solid_#f0f0eb] [padding-bottom:14px] [&_h3]:[display:flex] [&_h3]:[justify-content:space-between] [&_h3]:[gap:8px] [&_h3]:[margin:0] [&_h3]:[color:#536157] [&_h3]:[font-size:9px] [&_h3_small]:[color:#939b92] [&_h3_small]:[font-size:8px] [&_h3_small]:[font-weight:500] [&_.results-candidates]:[gap:11px] [&_.results-candidates]:[padding-top:11px]"
                         key={position.id}
@@ -766,8 +907,14 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => Promise<v
                             );
                           })}
                         </div>
+                        {leaders.length > 0 && (
+                          <p className="results-leader [margin:12px_0_0] [padding-top:9px] [border-top:1px_solid_#f1f0eb] [color:#90978e] [font-size:8px] [&_strong]:[color:#665155] [&_strong]:[font-weight:700]">
+                            Terbanyak sementara: <strong>{leaders.map((candidate) => candidate.name).join(", ")}</strong> ({highestVotes} suara)
+                          </p>
+                        )}
                       </section>
-                    ))}
+                      );
+                    })}
                   </div>
                 ) : (
                 <div className="results-candidates [display:grid] [gap:15px] [padding-top:16px]">
@@ -901,9 +1048,9 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => Promise<v
             <h2 id="reset-vote-title">Reset pilihan siswa?</h2>
             <p>
               {resetTarget.organizationId === "all" ? (
-                <>Semua suara <strong>{resetTarget.name}</strong> untuk MPK, OSIS, dan KY akan dihapus dari rekap. Siswa dapat masuk kembali dan memilih ulang dari awal. NIS: {resetTarget.nis}.</>
+                <>Semua suara <strong>{resetTarget.name}</strong> untuk MPK, OSIS, dan KY akan dihapus. Siswa dapat masuk kembali dan memilih ulang dari awal.</>
               ) : (
-                <>Suara <strong>{resetTarget.name}</strong> untuk {resetTarget.organizationName} akan dihapus dari rekap. Siswa dapat masuk kembali dan memilih ulang. NIS: {resetTarget.nis}.</>
+                <>Suara <strong>{resetTarget.name}</strong> untuk {resetTarget.organizationName} akan dihapus dari rekap. Siswa dapat masuk kembali dan memilih ulang.</>
               )}
             </p>
             {resetError && <p className="form-error reset-dialog-error [margin:-7px_0_10px] [color:#b6473d] [font-size:10px] [margin:12px_0_0]" role="alert">{resetError}</p>}

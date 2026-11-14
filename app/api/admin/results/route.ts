@@ -53,6 +53,58 @@ export async function GET() {
     const mpkBallotTotal = database
       .prepare("SELECT COUNT(*) AS total FROM mpk_ballots")
       .get() as { total: number };
+    const voterRows = database
+      .prepare(
+        `SELECT voters.nis, voters.name, participation.organization_id
+         FROM voters
+         LEFT JOIN participation ON participation.nis = voters.nis
+         WHERE voters.active = 1
+         ORDER BY voters.name COLLATE NOCASE, participation.organization_id`,
+      )
+      .all() as { organization_id: string | null; nis: string; name: string }[];
+    const votersByNis = new Map<
+      string,
+      {
+        nis: string;
+        name: string;
+        participatedOrganizations: OrganizationId[];
+        searchIdentifiers: string[];
+      }
+    >();
+    const votersByOrganization = new Map<OrganizationId, { nis: string; name: string }[]>(
+      organizationIds.map((organizationId) => [organizationId, []]),
+    );
+    for (const row of voterRows) {
+      const voter = votersByNis.get(row.nis) ?? {
+        nis: row.nis,
+        name: row.name,
+        participatedOrganizations: [],
+        searchIdentifiers: [row.nis],
+      };
+      if (
+        row.organization_id &&
+        organizationIds.includes(row.organization_id as OrganizationId)
+      ) {
+        const organizationId = row.organization_id as OrganizationId;
+        voter.participatedOrganizations.push(organizationId);
+        votersByOrganization.get(organizationId)?.push({ nis: row.nis, name: row.name });
+      }
+      votersByNis.set(row.nis, voter);
+    }
+    const voterIdentifierRows = database
+      .prepare(
+        `SELECT voter_ids.nis, voter_ids.identifier
+         FROM voter_ids
+         JOIN voters ON voters.nis = voter_ids.nis
+         WHERE voters.active = 1`,
+      )
+      .all() as { nis: string; identifier: string }[];
+    for (const row of voterIdentifierRows) {
+      const voter = votersByNis.get(row.nis);
+      if (voter && !voter.searchIdentifiers.includes(row.identifier)) {
+        voter.searchIdentifiers.push(row.identifier);
+      }
+    }
 
     const organizations = organizationIds.map((id) => {
       if (id === "mpk") {
@@ -78,6 +130,8 @@ export async function GET() {
           hasAnyVotes: mpkBallotTotal.total > 0,
           candidates: [],
           positions,
+          voters: votersByOrganization.get(id) ?? [],
+          abstainers: [],
         };
       }
 
@@ -93,15 +147,14 @@ export async function GET() {
         hasAnyVotes: candidates.reduce((total, candidate) => total + candidate.votes, 0) > 0,
         candidates,
         positions: [],
+        voters: votersByOrganization.get(id) ?? [],
+        abstainers: [],
       };
     });
 
     return NextResponse.json({
-      organizations: organizations.map((organization) => ({
-        ...organization,
-        voters: [],
-        abstainers: [],
-      })),
+      organizations,
+      voters: [...votersByNis.values()],
       totalVotes: organizations.reduce((total, organization) => total + organization.totalVotes, 0),
     });
   } catch (error) {
