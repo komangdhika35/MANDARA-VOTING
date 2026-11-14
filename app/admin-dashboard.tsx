@@ -80,6 +80,10 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => Promise<v
   const [voterCategory, setVoterCategory] = useState<"voted" | "not-voted">("voted");
   const [candidateConfigurations, setCandidateConfigurations] =
     useState<CandidateConfigurations | null>(null);
+  const [candidateCounts, setCandidateCounts] = useState<Record<"osis" | "ky", number>>({
+    osis: 2,
+    ky: 2,
+  });
   const [mpkMembers, setMpkMembers] = useState<
     Record<"chair" | "vice", MpkMember[]> | null
   >(null);
@@ -92,11 +96,12 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => Promise<v
     try {
       const response = await fetch("/api/election/candidates", { cache: "no-store" });
       const data = (await response.json()) as Partial<ElectionCandidates> & { error?: string };
-      if (!response.ok || !data.organizations || !data.mpkMembers) {
+      if (!response.ok || !data.organizations || !data.mpkMembers || !data.candidateCounts) {
         throw new Error(data.error ?? "Gagal memuat pasangan calon.");
       }
       setCandidateConfigurations(data.organizations);
       setMpkMembers(data.mpkMembers);
+      setCandidateCounts(data.candidateCounts);
     } catch (loadError) {
       setCandidateError(
         loadError instanceof Error ? loadError.message : "Tidak dapat memuat pasangan calon.",
@@ -122,23 +127,62 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => Promise<v
     setCandidateMessage("");
   }
 
-  function updateMpkMember(
+  function updateMpkMember<K extends keyof MpkMember>(
     memberId: string,
-    field: "name" | "photoDataUrl" | "vision" | "mission",
-    value: string,
+    field: K,
+    value: MpkMember[K],
+    position?: "chair" | "vice",
   ) {
-    setMpkMembers((current) =>
-      current
-        ? {
-            chair: current.chair.map((member) =>
-              member.id === memberId ? { ...member, [field]: value } : member,
-            ),
-            vice: current.vice.map((member) =>
-              member.id === memberId ? { ...member, [field]: value } : member,
-            ),
-          }
-        : null,
-    );
+    setMpkMembers((current) => {
+      if (!current) return current;
+      const updatePosition = (candidatePosition: "chair" | "vice") => {
+        const members = current[candidatePosition].map((member) =>
+          member.id === memberId && (field !== "number" || candidatePosition === position)
+            ? { ...member, [field]: value }
+            : member,
+        );
+        if (
+          field === "number" &&
+          candidatePosition === position &&
+          typeof value === "string" &&
+          /^\d{1,3}$/.test(value) &&
+          Number(value) >= 1 &&
+          Number(value) <= 999
+        ) {
+          members.sort(
+            (left, right) =>
+              Number(left.number) - Number(right.number) ||
+              left.name.localeCompare(right.name),
+          );
+        }
+        return members;
+      };
+      return { chair: updatePosition("chair"), vice: updatePosition("vice") };
+    });
+    setCandidateMessage("");
+  }
+
+  function addMpkMember(position: "chair" | "vice") {
+    setMpkMembers((current) => {
+      if (!current) return current;
+      const nextNumber = String(
+        Math.max(0, ...current[position].map((member) => Number(member.number) || 0)) + 1,
+      );
+      return {
+        ...current,
+        [position]: [
+          ...current[position],
+          {
+            id: `mpk-member-${crypto.randomUUID()}`,
+            name: "",
+            number: nextNumber,
+            photoDataUrl: "",
+            vision: "",
+            mission: "",
+          },
+        ],
+      };
+    });
     setCandidateMessage("");
   }
 
@@ -170,6 +214,51 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => Promise<v
     }
   }
 
+  function addCandidate(organizationId: "osis" | "ky") {
+    setCandidateConfigurations((current) => {
+      if (!current) return current;
+      const count = candidateCounts[organizationId];
+      const candidateToAdd = current[organizationId][count];
+      if (!candidateToAdd) return current;
+      const usedNumbers = new Set(
+        current[organizationId]
+          .slice(0, count)
+          .map((candidate) => Number(candidate.number)),
+      );
+      let nextNumber = 1;
+      while (usedNumbers.has(nextNumber)) nextNumber += 1;
+      return {
+        ...current,
+        [organizationId]: current[organizationId].map((candidate) =>
+          candidate.id === candidateToAdd.id
+            ? {
+                ...candidate,
+                name: "",
+                viceName: "",
+                number: String(nextNumber),
+                photoDataUrl: "",
+                vision: "",
+                mission: "",
+              }
+            : candidate,
+        ),
+      };
+    });
+    setCandidateCounts((current) => ({
+      ...current,
+      [organizationId]: Math.min(current[organizationId] + 1, 3),
+    }));
+    setCandidateMessage("");
+  }
+
+  function removeCandidate(organizationId: "osis" | "ky") {
+    setCandidateCounts((current) => ({
+      ...current,
+      [organizationId]: Math.max(2, current[organizationId] - 1),
+    }));
+    setCandidateMessage("");
+  }
+
   async function saveCandidates() {
     if (!candidateConfigurations || !mpkMembers) return;
     setSavingCandidates(true);
@@ -182,8 +271,8 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => Promise<v
         body: JSON.stringify({
           organizations: {
             ...candidateConfigurations,
-            osis: candidateConfigurations.osis.slice(0, 2),
-            ky: candidateConfigurations.ky.slice(0, 2),
+            osis: candidateConfigurations.osis.slice(0, candidateCounts.osis),
+            ky: candidateConfigurations.ky.slice(0, candidateCounts.ky),
           },
           mpkMembers,
         }),
@@ -191,13 +280,15 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => Promise<v
       const data = (await response.json()) as {
         organizations?: CandidateConfigurations;
         mpkMembers?: Record<"chair" | "vice", MpkMember[]>;
+        candidateCounts?: Record<"osis" | "ky", number>;
         error?: string;
       };
-      if (!response.ok || !data.organizations || !data.mpkMembers) {
+      if (!response.ok || !data.organizations || !data.mpkMembers || !data.candidateCounts) {
         throw new Error(data.error ?? "Perubahan pasangan calon belum dapat disimpan.");
       }
       setCandidateConfigurations(data.organizations);
       setMpkMembers(data.mpkMembers);
+      setCandidateCounts(data.candidateCounts);
       setCandidateMessage("Perubahan kandidat berhasil disimpan.");
       await loadResults();
     } catch (saveError) {
@@ -397,7 +488,7 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => Promise<v
             <div>
               <span className="eyebrow dark-eyebrow [font-size:9px] [font-weight:700] [letter-spacing:1.15px] [color:#849177]">PENGATURAN PEMILIHAN</span>
               <h2 id="candidate-management-title">Atur kandidat</h2>
-              <p>Kelola nama, foto, visi, dan misi calon MPK, OSIS, dan KY.</p>
+              <p>Kelola nama, nomor, foto, visi, dan misi calon MPK, OSIS, dan KY.</p>
             </div>
             <button
               className="primary-button candidate-save-button transition-[transform,background-color] duration-200 hover:-translate-y-0.5 motion-reduce:transform-none [height:44px] [border:0] [border-radius:7px] [display:inline-flex] [align-items:center] [justify-content:center] [gap:14px] [color:#f9faef] [background:#17483b] [font-size:10px] [font-weight:700] [cursor:pointer] [transition:background_.2s,_transform_.2s,_box-shadow_.2s,_opacity_.2s] [&:hover:not(:disabled)]:[background:#225d4b] [&:hover:not(:disabled)]:[transform:translateY(-1px)] [&:active:not(:disabled)]:[transform:translateY(0)_scale(.98)] [&:disabled]:[cursor:wait] [&:focus-visible]:[outline:3px_solid_#b5cd79] [&:focus-visible]:[outline-offset:3px] [&_span]:[font-size:15px] [&_span]:[font-weight:400] [flex:0_0_auto] [padding:0_15px] [background:#b83243] [&:hover:not(:disabled)]:[background:#9e2939] [&:disabled]:[opacity:.65]"
@@ -433,6 +524,26 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => Promise<v
                           key={`${position}-${member.id}`}
                           style={{ animationDelay: `${Math.min(index, 7) * 45}ms` }}
                         >
+                          <div className="[display:grid] [grid-template-columns:90px_minmax(0,_1fr)_auto] [align-items:end] [gap:8px] [margin:8px_0] [&_label]:[display:grid] [&_label]:[gap:4px] [&_label]:[color:#647168] [&_label]:[font-size:8px] [&_label]:[font-weight:700] [&_input]:[width:100%] [&_input]:[min-width:0] [&_input]:[height:34px] [&_input]:[padding:0_9px] [&_input]:[border:1px_solid_#e5e6df] [&_input]:[border-radius:6px] [&_input]:[color:#34483e] [&_input]:[background:#fff] [&_input]:[font:inherit] [&_input]:[font-size:10px] [&_input:focus]:[border-color:#b83243] [&_input:focus]:[outline:2px_solid_rgba(184,_50,_67,_.12)] [&_input:disabled]:[opacity:.6] [&_select]:[width:100%] [&_select]:[min-width:0] [&_select]:[height:34px] [&_select]:[padding:0_8px] [&_select]:[border:1px_solid_#e5e6df] [&_select]:[border-radius:6px] [&_select]:[color:#34483e] [&_select]:[background:#fff] [&_select]:[font:inherit] [&_select]:[font-size:10px] [&_select:focus]:[border-color:#b83243] [&_select:focus]:[outline:2px_solid_rgba(184,_50,_67,_.12)] [&_select:disabled]:[opacity:.6]">
+                            <label
+                              htmlFor={`${position}-${member.id}-number`}
+                              style={{ gridColumn: "1 / -1" }}
+                            >
+                              Nomor calon
+                              <input
+                                id={`${position}-${member.id}-number`}
+                                type="number"
+                                min={1}
+                                max={999}
+                                placeholder="1"
+                                value={member.number}
+                                disabled={savingCandidates}
+                                onChange={(event) =>
+                                  updateMpkMember(member.id, "number", event.target.value, position)
+                                }
+                              />
+                            </label>
+                          </div>
                           <div className="mpk-member-edit-row [display:flex] [gap:7px] [margin:8px_0] [&_input]:[min-width:0] [&_input]:[flex:1] [&_input]:[height:34px] [&_input]:[padding:0_9px] [&_input]:[border:1px_solid_#e5e6df] [&_input]:[border-radius:6px] [&_input]:[color:#34483e] [&_input]:[background:#fff] [&_input]:[font:inherit] [&_input]:[font-size:10px] [&_input:focus]:[border-color:#b83243] [&_input:focus]:[outline:2px_solid_rgba(184,_50,_67,_.12)] [&_input:disabled]:[opacity:.6]">
                             <label className="sr-only [position:absolute] [width:1px] [height:1px] [overflow:hidden] [clip:rect(0,_0,_0,_0)] [white-space:nowrap] [clip-path:inset(50%)]" htmlFor={`${position}-${member.id}-name`}>
                               Nama {positionTitle}
@@ -554,26 +665,7 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => Promise<v
                           (position === "chair" && mpkMembers.chair.length >= 10) ||
                           mpkMembers.chair.length + mpkMembers.vice.length >= 200
                         }
-                        onClick={() => {
-                          setMpkMembers((current) =>
-                            current
-                              ? {
-                                  ...current,
-                                  [position]: [
-                                    ...current[position],
-                                      {
-                                        id: `mpk-member-${crypto.randomUUID()}`,
-                                        name: "",
-                                        photoDataUrl: "",
-                                        vision: "",
-                                        mission: "",
-                                      },
-                                    ],
-                                }
-                              : null,
-                          );
-                          setCandidateMessage("");
-                        }}
+                        onClick={() => addMpkMember(position)}
                       >
                         + Tambah calon {position === "chair" ? "ketua" : "wakil"}
                       </button>
@@ -599,13 +691,26 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => Promise<v
                         Nama dan nomor dikunci setelah suara tercatat. Foto, visi, dan misi tetap dapat diperbarui.
                       </p>
                     )}
-                    {candidateConfigurations[organizationId].slice(0, 2).map((candidate, index) => (
+                    {candidateConfigurations[organizationId]
+                      .slice(0, candidateCounts[organizationId])
+                      .sort((left, right) => Number(left.number) - Number(right.number))
+                      .map((candidate, index) => (
                       <fieldset
                         className="candidate-edit-fields motion-safe:animate-poster-in [display:grid] [gap:7px] [margin:0] [padding:12px_0] [border:0] [border-top:1px_solid_#f1ece9] [&_legend]:[padding:0_6px_0_0] [&_legend]:[color:#647168] [&_legend]:[font-size:9px] [&_legend]:[font-weight:700] [&_label]:[color:#647168] [&_label]:[font-size:8px] [&_label]:[font-weight:700] [&_input]:[width:100%] [&_input]:[min-width:0] [&_input]:[height:34px] [&_input]:[padding:0_9px] [&_input]:[border:1px_solid_#e5e6df] [&_input]:[border-radius:6px] [&_input]:[color:#34483e] [&_input]:[background:#fff] [&_input]:[font:inherit] [&_input]:[font-size:10px] [&_input:focus]:[border-color:#b83243] [&_input:focus]:[outline:2px_solid_rgba(184,_50,_67,_.12)] [&_input:last-child]:[max-width:90px] [&_textarea]:[width:100%] [&_textarea]:[min-width:0] [&_textarea]:[resize:vertical] [&_textarea]:[padding:8px_9px] [&_textarea]:[border:1px_solid_#e5e6df] [&_textarea]:[border-radius:6px] [&_textarea]:[color:#34483e] [&_textarea]:[background:#fff] [&_textarea]:[font:inherit] [&_textarea]:[font-size:9px] [&_textarea]:[line-height:1.5] [&_textarea:focus]:[border-color:#b83243] [&_textarea:focus]:[outline:2px_solid_rgba(184,_50,_67,_.12)] [&_textarea:disabled]:[opacity:.6] [&_input[type='file']]:[height:auto] [&_input[type='file']]:[padding:6px] [&_input[type='file']]:[font-size:8px] [&_input[type='file']::file-selector-button]:[margin-right:7px] [&_input[type='file']::file-selector-button]:[padding:6px_8px] [&_input[type='file']::file-selector-button]:[border:1px_solid_#eadbdd] [&_input[type='file']::file-selector-button]:[border-radius:5px] [&_input[type='file']::file-selector-button]:[color:#a93646] [&_input[type='file']::file-selector-button]:[background:#fff8f8] [&_input[type='file']::file-selector-button]:[font:inherit] [&_input[type='file']::file-selector-button]:[cursor:pointer] [&_>_label_small]:[margin-left:3px] [&_>_label_small]:[color:#929a91] [&_>_label_small]:[font-size:7px] [&_>_label_small]:[font-weight:500]"
                         key={candidate.id}
                         style={{ animationDelay: `${(organizationIndex * 2 + index) * 75}ms` }}
                       >
                         <legend>Paslon {index + 1}</legend>
+                        {index >= 2 && (
+                          <button
+                            type="button"
+                            className="[justify-self:start] [padding:5px_8px] [border:1px_solid_#f0d7d9] [border-radius:5px] [color:#a93646] [background:#fff7f7] [font-size:8px] [font-weight:700] [cursor:pointer] [&:disabled]:[opacity:.6] [&:disabled]:[cursor:not-allowed]"
+                            disabled={savingCandidates || hasVotes}
+                            onClick={() => removeCandidate(organizationId)}
+                          >
+                            Hapus paslon
+                          </button>
+                        )}
                         <label htmlFor={`${candidate.id}-name`}>Nama calon ketua</label>
                         <input
                           id={`${candidate.id}-name`}
@@ -636,11 +741,12 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => Promise<v
                             )
                           }
                         />
-                        <label htmlFor={`${candidate.id}-number`}>Nomor paslon (01-99)</label>
+                        <label htmlFor={`${candidate.id}-number`}>Nomor paslon (1-99)</label>
                         <input
                           id={`${candidate.id}-number`}
-                          inputMode="numeric"
-                          maxLength={2}
+                          type="number"
+                          min={1}
+                          max={99}
                           value={candidate.number}
                           disabled={savingCandidates || hasVotes}
                           onChange={(event) =>
@@ -725,6 +831,19 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => Promise<v
                         />
                       </fieldset>
                     ))}
+                    <button
+                      type="button"
+                      className="add-member-button [width:100%] [min-height:34px] [margin-top:7px] [border:1px_dashed_#d8b8ba] [border-radius:6px] [color:#a93646] [background:#fffafa] [font-size:9px] [font-weight:700] [cursor:pointer] [&:disabled]:[opacity:.6] [&:disabled]:[cursor:not-allowed]"
+                      disabled={
+                        savingCandidates ||
+                        hasVotes ||
+                        candidateCounts[organizationId] >=
+                          candidateConfigurations[organizationId].length
+                      }
+                      onClick={() => addCandidate(organizationId)}
+                    >
+                      + Tambah paslon {organizationId.toUpperCase()}
+                    </button>
                   </article>
                 );
               })}
