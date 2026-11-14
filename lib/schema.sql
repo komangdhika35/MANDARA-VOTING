@@ -91,6 +91,7 @@ CREATE TABLE IF NOT EXISTS mpk_member_details (
 CREATE TABLE IF NOT EXISTS mpk_member_positions (
   member_id TEXT NOT NULL REFERENCES mpk_members(member_id) ON DELETE CASCADE,
   position TEXT NOT NULL CHECK (position IN ('chair', 'vice')),
+  candidate_number TEXT NOT NULL DEFAULT '',
   PRIMARY KEY (member_id, position)
 );
 

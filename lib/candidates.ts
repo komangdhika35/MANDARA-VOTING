@@ -46,7 +46,7 @@ export function getCandidateConfigurations(): CandidateConfigurations {
         id: row.candidate_id,
         name: row.candidate_name,
         viceName: row.vice_name,
-        number: row.candidate_number,
+        number: String(Number(row.candidate_number)),
         photoDataUrl: row.photo_data_url,
         vision: row.vision,
         mission: row.mission,
@@ -59,6 +59,22 @@ export function getCandidateConfigurations(): CandidateConfigurations {
 
 export function getElectionCandidates(): ElectionCandidates {
   const database = getDatabase();
+  const candidateCountRows = database
+    .prepare(
+      "SELECT organization_id, candidate_count FROM election_candidate_counts",
+    )
+    .all() as { organization_id: "osis" | "ky"; candidate_count: number }[];
+  const candidateCountByOrganization = new Map(
+    candidateCountRows.map((row) => [row.organization_id, row.candidate_count]),
+  );
+  const candidateCounts = {
+    osis: candidateCountByOrganization.get("osis"),
+    ky: candidateCountByOrganization.get("ky"),
+  };
+  if (candidateCounts.osis === undefined || candidateCounts.ky === undefined) {
+    throw new Error("Jumlah pasangan calon OSIS atau KY tidak ditemukan.");
+  }
+
   const memberRows = database
     .prepare(
       `SELECT
@@ -67,35 +83,41 @@ export function getElectionCandidates(): ElectionCandidates {
          COALESCE(mpk_member_details.photo_data_url, '') AS photoDataUrl,
          COALESCE(mpk_member_details.vision, '') AS vision,
          COALESCE(mpk_member_details.mission, '') AS mission,
+         mpk_member_positions.candidate_number AS number,
          mpk_member_positions.position
        FROM mpk_members
        JOIN mpk_member_positions ON mpk_member_positions.member_id = mpk_members.member_id
        LEFT JOIN mpk_member_details ON mpk_member_details.member_id = mpk_members.member_id
-       ORDER BY mpk_members.name COLLATE NOCASE`,
+       ORDER BY mpk_member_positions.position,
+                CAST(mpk_member_positions.candidate_number AS INTEGER),
+                mpk_members.name COLLATE NOCASE`,
     )
     .all() as (MpkMember & { position: string })[];
   return {
     mpkMembers: {
       chair: memberRows
         .filter((member) => member.position === "chair")
-        .map(({ id, name, photoDataUrl, vision, mission }) => ({
+        .map(({ id, name, number, photoDataUrl, vision, mission }) => ({
           id,
           name,
+          number: String(Number(number)),
           photoDataUrl,
           vision,
           mission,
         })),
       vice: memberRows
         .filter((member) => member.position === "vice")
-        .map(({ id, name, photoDataUrl, vision, mission }) => ({
+        .map(({ id, name, number, photoDataUrl, vision, mission }) => ({
           id,
           name,
+          number: String(Number(number)),
           photoDataUrl,
           vision,
           mission,
         })),
     },
     organizations: getCandidateConfigurations(),
+    candidateCounts,
   };
 }
 

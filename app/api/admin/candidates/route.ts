@@ -139,7 +139,7 @@ export async function PUT(request: Request) {
           }
         }
 
-        const number = String(numericNumber).padStart(2, "0");
+        const number = String(numericNumber);
         if (numbers.has(number)) {
           return NextResponse.json(
             { error: `Nomor paslon pada ${organizationId.toUpperCase()} tidak boleh sama.` },
@@ -167,18 +167,22 @@ export async function PUT(request: Request) {
         const submittedId = typeof submitted.id === "string" ? submitted.id.trim() : "";
         const name = typeof submitted.name === "string" ? submitted.name.trim() : "";
         const photoDataUrl = submitted.photoDataUrl;
+        const number = typeof submitted.number === "string" ? submitted.number.trim() : "";
         const vision = typeof submitted.vision === "string" ? submitted.vision.trim() : "";
         const mission = typeof submitted.mission === "string" ? submitted.mission.trim() : "";
         if (
           !name ||
           name.length > 80 ||
           submittedId.length > 80 ||
+          !/^\d{1,3}$/.test(number) ||
+          Number(number) < 1 ||
+          Number(number) > 999 ||
           vision.length > 500 ||
           mission.length > 1200 ||
           !isValidPhotoDataUrl(photoDataUrl)
         ) {
           return NextResponse.json(
-            { error: "Nama, foto, visi, atau misi calon MPK tidak valid. Foto harus JPG, PNG, atau WebP (maks. 512 KB)." },
+            { error: "Nama, nomor, foto, visi, atau misi calon MPK tidak valid. Nomor harus 1–999 dan foto harus JPG, PNG, atau WebP (maks. 512 KB)." },
             { status: 400 },
           );
         }
@@ -192,6 +196,16 @@ export async function PUT(request: Request) {
           }
         }
         const id = submittedId || `mpk-member-${randomUUID()}`;
+        if (
+          mpkMembers[position].some(
+            (member) => member.number === String(Number(number)),
+          )
+        ) {
+          return NextResponse.json(
+            { error: `Nomor calon pada daftar ${position === "chair" ? "ketua" : "wakil"} MPK tidak boleh sama.` },
+            { status: 400 },
+          );
+        }
         if (positionIds.has(id)) {
           return NextResponse.json(
             { error: `ID anggota pada daftar calon ${position === "chair" ? "ketua" : "wakil"} MPK tidak boleh sama.` },
@@ -225,7 +239,12 @@ export async function PUT(request: Request) {
         positionIds.add(id);
         memberNamesById.set(id, name);
         memberDetailsById.set(id, details);
-        mpkMembers[position].push({ id, name, ...details });
+        mpkMembers[position].push({
+          id,
+          name,
+          number: String(Number(number)),
+          ...details,
+        });
       }
     }
 
@@ -334,7 +353,8 @@ export async function PUT(request: Request) {
         .get() as { total: number };
       const currentMembers = database
         .prepare(
-          `SELECT mpk_members.member_id AS id, mpk_members.name, mpk_member_positions.position
+          `SELECT mpk_members.member_id AS id, mpk_members.name, mpk_member_positions.position,
+                  mpk_member_positions.candidate_number AS number
            FROM mpk_members
            JOIN mpk_member_positions ON mpk_member_positions.member_id = mpk_members.member_id`,
         )
@@ -375,11 +395,26 @@ export async function PUT(request: Request) {
            ON CONFLICT(member_id) DO UPDATE SET name = excluded.name`,
         );
         const insertPosition = database.prepare(
-          "INSERT INTO mpk_member_positions (member_id, position) VALUES (?, ?)",
+          `INSERT INTO mpk_member_positions
+             (member_id, position, candidate_number)
+           VALUES (?, ?, ?)`,
         );
         for (const [id, name] of memberNamesById) insertMember.run(id, name);
         for (const position of ["chair", "vice"] as const) {
-          for (const member of mpkMembers[position]) insertPosition.run(member.id, position);
+          for (const member of mpkMembers[position]) {
+            insertPosition.run(member.id, position, member.number);
+          }
+        }
+      } else {
+        const updatePosition = database.prepare(
+          `UPDATE mpk_member_positions
+           SET candidate_number = ?
+           WHERE member_id = ? AND position = ?`,
+        );
+        for (const position of ["chair", "vice"] as const) {
+          for (const member of mpkMembers[position]) {
+            updatePosition.run(member.number, member.id, position);
+          }
         }
       }
 
@@ -415,28 +450,33 @@ export async function PUT(request: Request) {
            COALESCE(mpk_member_details.photo_data_url, '') AS photoDataUrl,
            COALESCE(mpk_member_details.vision, '') AS vision,
            COALESCE(mpk_member_details.mission, '') AS mission,
+           mpk_member_positions.candidate_number AS number,
            mpk_member_positions.position
          FROM mpk_members
          JOIN mpk_member_positions ON mpk_member_positions.member_id = mpk_members.member_id
          LEFT JOIN mpk_member_details ON mpk_member_details.member_id = mpk_members.member_id
-         ORDER BY mpk_members.name COLLATE NOCASE`,
+         ORDER BY mpk_member_positions.position,
+                  CAST(mpk_member_positions.candidate_number AS INTEGER),
+                  mpk_members.name COLLATE NOCASE`,
       )
       .all() as (MpkMember & { position: "chair" | "vice" })[];
     const savedMpkMembersByPosition = {
       chair: savedMpkMembers
         .filter((member) => member.position === "chair")
-        .map(({ id, name, photoDataUrl, vision, mission }) => ({
+        .map(({ id, name, number, photoDataUrl, vision, mission }) => ({
           id,
           name,
+          number: String(Number(number)),
           photoDataUrl,
           vision,
           mission,
         })),
       vice: savedMpkMembers
         .filter((member) => member.position === "vice")
-        .map(({ id, name, photoDataUrl, vision, mission }) => ({
+        .map(({ id, name, number, photoDataUrl, vision, mission }) => ({
           id,
           name,
+          number: String(Number(number)),
           photoDataUrl,
           vision,
           mission,
@@ -446,6 +486,10 @@ export async function PUT(request: Request) {
       success: true,
       mpkMembers: savedMpkMembersByPosition,
       organizations: getCandidateConfigurations(),
+      candidateCounts: {
+        osis: configurations.osis.length,
+        ky: configurations.ky.length,
+      },
     });
   } catch (error) {
     console.error("Gagal menyimpan konfigurasi kandidat:", error);

@@ -33,7 +33,7 @@ function createDatabase() {
       insertCandidate.run(
         candidateId,
         organizationId,
-        String(index + 1).padStart(2, "0"),
+        String(index + 1),
         candidateNames[candidateId],
         candidateViceNames[candidateId],
       );
@@ -178,5 +178,81 @@ export function getDatabase() {
       mission TEXT NOT NULL DEFAULT ''
     );
   `);
+  const memberPositionColumns = database
+    .prepare("PRAGMA table_info(mpk_member_positions)")
+    .all() as { name: string }[];
+  const existingColumns = new Set(memberPositionColumns.map((column) => column.name));
+  const migrationId = "mpk-candidate-identifiers-v1";
+  const migration = database
+    .prepare("SELECT 1 FROM app_migrations WHERE migration_id = ?")
+    .get(migrationId);
+  if (!migration) {
+    database.exec("BEGIN IMMEDIATE");
+    try {
+      if (!existingColumns.has("candidate_number")) {
+        database.exec(
+          "ALTER TABLE mpk_member_positions ADD COLUMN candidate_number TEXT NOT NULL DEFAULT ''",
+        );
+      }
+
+      const members = database
+        .prepare(
+          `SELECT mpk_member_positions.member_id, mpk_member_positions.position
+           FROM mpk_member_positions
+           JOIN mpk_members ON mpk_members.member_id = mpk_member_positions.member_id
+           ORDER BY mpk_member_positions.position, mpk_members.name COLLATE NOCASE, mpk_member_positions.member_id`,
+        )
+        .all() as { member_id: string; position: "chair" | "vice" }[];
+      const updateMember = database.prepare(
+        `UPDATE mpk_member_positions
+         SET candidate_number = ?
+         WHERE member_id = ? AND position = ?`,
+      );
+      const indexes = new Map<"chair" | "vice", number>([
+        ["chair", 0],
+        ["vice", 0],
+      ]);
+      for (const member of members) {
+        const index = indexes.get(member.position) ?? 0;
+        updateMember.run(
+          String(index + 1),
+          member.member_id,
+          member.position,
+        );
+        indexes.set(member.position, index + 1);
+      }
+      database
+        .prepare("INSERT INTO app_migrations (migration_id, applied_at) VALUES (?, ?)")
+        .run(migrationId, Math.floor(Date.now() / 1000));
+      database.exec("COMMIT");
+    } catch (error) {
+      database.exec("ROLLBACK");
+      throw error;
+    }
+  }
+  const numberFormatMigrationId = "candidate-number-without-leading-zero-v1";
+  const numberFormatMigration = database
+    .prepare("SELECT 1 FROM app_migrations WHERE migration_id = ?")
+    .get(numberFormatMigrationId);
+  if (!numberFormatMigration) {
+    database.exec("BEGIN IMMEDIATE");
+    try {
+      database.exec(
+        `UPDATE election_candidates
+         SET candidate_number = CAST(candidate_number AS INTEGER)`,
+      );
+      database.exec(
+        `UPDATE mpk_member_positions
+         SET candidate_number = CAST(candidate_number AS INTEGER)`,
+      );
+      database
+        .prepare("INSERT INTO app_migrations (migration_id, applied_at) VALUES (?, ?)")
+        .run(numberFormatMigrationId, Math.floor(Date.now() / 1000));
+      database.exec("COMMIT");
+    } catch (error) {
+      database.exec("ROLLBACK");
+      throw error;
+    }
+  }
   return database;
 }

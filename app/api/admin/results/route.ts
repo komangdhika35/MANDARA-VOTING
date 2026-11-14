@@ -34,6 +34,12 @@ export async function GET() {
     );
     const candidateConfigurations = getCandidateConfigurations();
     const electionCandidates = getElectionCandidates();
+    const candidateCountRows = database
+      .prepare("SELECT organization_id, candidate_count FROM election_candidate_counts")
+      .all() as { organization_id: "osis" | "ky"; candidate_count: number }[];
+    const candidateCountByOrganization = new Map(
+      candidateCountRows.map((row) => [row.organization_id, row.candidate_count]),
+    );
 
     const mpkRows = database
       .prepare(
@@ -135,7 +141,11 @@ export async function GET() {
         };
       }
 
-      const candidates = candidateConfigurations[id].map((candidate) => ({
+      const candidateCount = candidateCountByOrganization.get(id);
+      if (candidateCount === undefined) {
+        throw new Error(`Jumlah pasangan calon ${id.toUpperCase()} tidak ditemukan.`);
+      }
+      const candidates = candidateConfigurations[id].slice(0, candidateCount).map((candidate) => ({
         ...candidate,
         votes: votesByCandidate.get(`${id}:${candidate.id}`) ?? 0,
       }));

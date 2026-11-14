@@ -240,14 +240,21 @@ export default function Home() {
         const candidateData = (await candidateResponse.json()) as {
           mpkMembers?: ElectionCandidates["mpkMembers"];
           organizations?: CandidateConfigurations;
+          candidateCounts?: ElectionCandidates["candidateCounts"];
           error?: string;
         };
-        if (!candidateResponse.ok || !candidateData.organizations || !candidateData.mpkMembers) {
+        if (
+          !candidateResponse.ok ||
+          !candidateData.organizations ||
+          !candidateData.mpkMembers ||
+          !candidateData.candidateCounts
+        ) {
           throw new Error(candidateData.error ?? "Gagal memuat pasangan calon.");
         }
         setElectionCandidates({
           organizations: candidateData.organizations,
           mpkMembers: candidateData.mpkMembers,
+          candidateCounts: candidateData.candidateCounts,
         });
         if (response.status === 401) return;
 
@@ -311,7 +318,9 @@ export default function Home() {
               program: "",
               motto: "",
             }))
-          : organization.candidates.slice(0, 2).map((candidate) => {
+          : organization.candidates
+              .slice(0, electionCandidates?.candidateCounts[organization.id] ?? 2)
+              .map((candidate) => {
               const configured = electionCandidates?.organizations[organization.id].find(
                 (item) => item.id === candidate.id,
               );
@@ -547,7 +556,9 @@ export default function Home() {
     role === "student" &&
     (activeOrganization === "osis" || activeOrganization === "ky") &&
     !votes[activeOrganization];
-  const pairPosterCandidates = currentOrganization.candidates.slice(0, 2);
+  const pairPosterCandidates = currentOrganization.candidates
+    .slice(0, 2)
+    .sort((left, right) => Number(left.number) - Number(right.number));
   const selectedMpkChair = electionCandidates?.mpkMembers.chair.find(
     (candidate) => candidate.id === mpkSelections.chair,
   );
@@ -785,7 +796,7 @@ export default function Home() {
                 const program = mpkPosterPrograms[index % mpkPosterPrograms.length];
                 const candidateName =
                   candidate?.name ??
-                  `Calon ${mpkPosterPositionLabel} ${String(index + 1).padStart(2, "0")}`;
+                  `Calon ${mpkPosterPositionLabel} ${index + 1}`;
                 const vision = candidate?.vision.trim() || "";
                 const mission = candidate?.mission.trim() || "";
                 const isSelected = candidate?.id === selectedCandidate;
@@ -805,7 +816,7 @@ export default function Home() {
                   >
                     <span className="mpk-poster-card-top [display:flex] [align-items:center] [justify-content:space-between] [padding:10px_11px] [color:#9c7376] [font-size:7px] [font-weight:800] [letter-spacing:.7px] [&_strong]:[display:grid] [&_strong]:[width:23px] [&_strong]:[height:23px] [&_strong]:[place-items:center] [&_strong]:[border-radius:50%] [&_strong]:[color:#a93646] [&_strong]:[background:#fff0f1] [&_strong]:[font-size:9px] max-[420px]:[padding:8px] max-[420px]:[font-size:6px] min-[1000px]:[padding:4px_6px] min-[1000px]:[font-size:6px] min-[1000px]:[&_strong]:[width:18px] min-[1000px]:[&_strong]:[height:18px]">
                       <span>CALON {mpkPosterPositionLabel.toUpperCase()} MPK</span>
-                      <strong>{String(index + 1).padStart(2, "0")}</strong>
+                      <strong>{candidate?.number ?? index + 1}</strong>
                     </span>
                     <span className="mpk-poster-portrait [position:relative] [display:grid] [height:152px] [margin:0_9px] [overflow:hidden] [place-items:center] [border-radius:7px] [background:linear-gradient(145deg,_color-mix(in_srgb,_currentColor_12%,_white),_color-mix(in_srgb,_currentColor_35%,_white))] [&::before]:[position:absolute] [&::before]:[width:125px] [&::before]:[height:125px] [&::before]:[border:1px_solid_rgba(255,255,255,.62)] [&::before]:[border-radius:50%] [&::before]:[content:''] [&::after]:[position:absolute] [&::after]:[width:170px] [&::after]:[height:170px] [&::after]:[border:1px_solid_rgba(255,255,255,.62)] [&::after]:[border-radius:50%] [&::after]:[content:''] [&::before]:[top:19px] [&::before]:[left:-61px] [&::after]:[right:-66px] [&::after]:[bottom:-72px] [&_svg]:[position:relative] [&_svg]:[z-index:1] [&_svg]:[width:100%] [&_svg]:[height:100%] [&_svg]:[padding:13px_10px_0] [&_.mpk-poster-photo]:[position:relative] [&_.mpk-poster-photo]:[z-index:1] [&_.mpk-poster-photo]:[width:100%] [&_.mpk-poster-photo]:[height:100%] [&_.mpk-poster-photo]:[object-fit:cover] max-[760px]:[height:155px] max-[420px]:[height:125px] max-[420px]:[margin:0_6px] min-[1000px]:[height:clamp(100px,_16vh,_145px)] min-[1000px]:[margin:0_7px]">
                       {candidate?.photoDataUrl ? (
@@ -1091,6 +1102,9 @@ export default function Home() {
                                 <span className={`mpk-member-avatar  [width:30px] [height:30px] [flex:0_0_auto] [display:grid] [place-items:center] [border-radius:50%] [color:#495448] [font-size:8px] [font-weight:700] [&.rose]:[background:#f1d8d8] [&.blue]:[background:#dce5f1] [&.yellow]:[background:#f0e9c9] [&.mint]:[background:#dbece2] [&.peach]:[background:#f2dfd3] [&.lilac]:[background:#e8def1]${colors[index % colors.length]}`}>
                                   {initials}
                                 </span>
+                                <span className="[min-width:22px] [color:#a93646] [font-size:8px] [font-weight:800]">
+                                  {candidate.number}
+                                </span>
                                 <strong>{candidate.name}</strong>
                                 <span className="mpk-member-check [width:19px] [color:#a93646] [font-size:14px] [text-align:center]">
                                   {savedMemberId === candidate.id
@@ -1129,7 +1143,10 @@ export default function Home() {
               ) : (
                 <>
                   <div className="candidate-grid [display:grid] [grid-template-columns:repeat(3,_minmax(0,_1fr))] [gap:10px] max-[760px]:[gap:8px] max-[420px]:[gap:5px]">
-                    {currentOrganization.candidates.map((candidate, index) => (
+                    {currentOrganization.candidates
+                      .slice()
+                      .sort((left, right) => Number(left.number) - Number(right.number))
+                      .map((candidate, index) => (
                       <button
                         key={candidate.id}
                         className={`candidate-card transition-[transform,border-color,box-shadow] duration-200 hover:-translate-y-0.5 motion-safe:animate-fade-in motion-reduce:animate-none motion-reduce:transform-none  [position:relative] [min-width:0] [padding:11px_10px_10px] [border:1px_solid_#ebede7] [border-radius:8px] [background:#fff] [text-align:left] [cursor:pointer] [transition:transform_.24s_cubic-bezier(.2,.8,.2,1),_border-color_.2s,_box-shadow_.2s] [&:hover]:[border-color:#ccd9b6] [&:hover]:[box-shadow:0_5px_15px_rgba(39,_68,_46,_.06)] [&.selected]:[border-color:#819e60] [&.selected]:[box-shadow:0_0_0_2px_rgba(129,_158,_96,_.14)] [&.selected_.select-indicator]:[border-color:#668549] [&.selected_.select-indicator]:[background:#668549] max-[760px]:[padding:8px_7px_9px] max-[420px]:[padding-right:5px] max-[420px]:[padding-left:5px]${selectedCandidate === candidate.id ? "selected" : ""}`}
