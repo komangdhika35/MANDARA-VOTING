@@ -6,6 +6,7 @@ import {
   type CandidateConfigurations,
   type ElectionCandidates,
   type MpkMember,
+  type OrganizationLogos,
 } from "@/lib/election";
 
 type CandidateRow = {
@@ -59,6 +60,12 @@ export function getCandidateConfigurations(): CandidateConfigurations {
 
 export function getElectionCandidates(): ElectionCandidates {
   const database = getDatabase();
+  const organizationLogos: OrganizationLogos = { mpk: "", osis: "", ky: "" };
+  const logoRows = database
+    .prepare("SELECT organization_id, logo_data_url FROM organization_logos")
+    .all() as { organization_id: keyof OrganizationLogos; logo_data_url: string }[];
+  for (const logo of logoRows) organizationLogos[logo.organization_id] = logo.logo_data_url;
+
   const candidateCountRows = database
     .prepare(
       "SELECT organization_id, candidate_count FROM election_candidate_counts",
@@ -118,6 +125,7 @@ export function getElectionCandidates(): ElectionCandidates {
     },
     organizations: getCandidateConfigurations(),
     candidateCounts,
+    organizationLogos,
   };
 }
 

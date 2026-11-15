@@ -1,12 +1,13 @@
 "use client";
 
 import Image from "next/image";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   CandidateConfigurations,
   ElectionCandidates,
   MpkMember,
   OrganizationId,
+  OrganizationLogos,
 } from "@/lib/election";
 
 type CandidateResult = { id: string; name: string; viceName?: string; number?: string; votes: number };
@@ -42,12 +43,12 @@ type Results = {
   totalVotes: number;
 };
 
-function readCandidatePhoto(file: File): Promise<string> {
+function readCandidatePhoto(file: File, subject = "Foto calon"): Promise<string> {
   if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
-    return Promise.reject(new Error("Foto calon harus berformat JPG, PNG, atau WebP."));
+    return Promise.reject(new Error(`${subject} harus berformat JPG, PNG, atau WebP.`));
   }
   if (file.size > 512 * 1024) {
-    return Promise.reject(new Error("Ukuran foto calon maksimal 512 KB."));
+    return Promise.reject(new Error(`Ukuran ${subject.toLocaleLowerCase()} maksimal 512 KB.`));
   }
 
   return new Promise((resolve, reject) => {
@@ -59,6 +60,428 @@ function readCandidatePhoto(file: File): Promise<string> {
     reader.onerror = () => reject(reader.error ?? new Error("File foto tidak dapat dibaca."));
     reader.readAsDataURL(file);
   });
+}
+
+type PhotoCropVariant = "mpk" | "pair";
+
+function createRotatedPhotoCanvas(image: HTMLImageElement, rotation: number) {
+  const isSideways = rotation % 180 !== 0;
+  const canvas = document.createElement("canvas");
+  canvas.width = isSideways ? image.naturalHeight : image.naturalWidth;
+  canvas.height = isSideways ? image.naturalWidth : image.naturalHeight;
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("Tidak dapat memproses rotasi foto.");
+
+  context.translate(canvas.width / 2, canvas.height / 2);
+  context.rotate((rotation * Math.PI) / 180);
+  context.drawImage(image, -image.naturalWidth / 2, -image.naturalHeight / 2);
+  return canvas;
+}
+
+function drawCandidatePhotoCrop(
+  context: CanvasRenderingContext2D,
+  source: CanvasImageSource,
+  sourceWidth: number,
+  sourceHeight: number,
+  targetWidth: number,
+  targetHeight: number,
+  aspectRatio: number,
+  zoom: number,
+  horizontalPosition: number,
+  verticalPosition: number,
+) {
+  const cropWidth = Math.min(sourceWidth, sourceHeight * aspectRatio) / zoom;
+  const cropHeight = cropWidth / aspectRatio;
+  const sourceX = (sourceWidth - cropWidth) * (horizontalPosition / 100);
+  const sourceY = (sourceHeight - cropHeight) * (verticalPosition / 100);
+
+  context.clearRect(0, 0, targetWidth, targetHeight);
+  context.drawImage(
+    source,
+    sourceX,
+    sourceY,
+    cropWidth,
+    cropHeight,
+    0,
+    0,
+    targetWidth,
+    targetHeight,
+  );
+}
+
+function cropCandidatePhoto(
+  photoDataUrl: string,
+  variant: PhotoCropVariant,
+  rotation: number,
+  zoom: number,
+  horizontalPosition: number,
+  verticalPosition: number,
+): Promise<string> {
+  const image = new window.Image();
+  const aspectRatio = variant === "mpk" ? 3 / 4 : 360 / 245;
+
+  return new Promise((resolve, reject) => {
+    image.onload = () => {
+      let rotatedPhoto: HTMLCanvasElement;
+      try {
+        rotatedPhoto = createRotatedPhotoCanvas(image, rotation);
+      } catch (error) {
+        reject(error);
+        return;
+      }
+
+      const croppedPhoto = document.createElement("canvas");
+      croppedPhoto.width = 720;
+      croppedPhoto.height = Math.round(croppedPhoto.width / aspectRatio);
+      const context = croppedPhoto.getContext("2d");
+      if (!context) {
+        reject(new Error("Tidak dapat memproses potongan foto."));
+        return;
+      }
+
+      drawCandidatePhotoCrop(
+        context,
+        rotatedPhoto,
+        rotatedPhoto.width,
+        rotatedPhoto.height,
+        croppedPhoto.width,
+        croppedPhoto.height,
+        aspectRatio,
+        zoom,
+        horizontalPosition,
+        verticalPosition,
+      );
+
+      const encode = (quality: number) =>
+        new Promise<Blob>((resolveBlob, rejectBlob) => {
+          croppedPhoto.toBlob(
+            (blob) => {
+              if (blob) resolveBlob(blob);
+              else rejectBlob(new Error("Hasil potongan foto tidak dapat disimpan."));
+            },
+            "image/jpeg",
+            quality,
+          );
+        });
+
+      void (async () => {
+        try {
+          let blob: Blob | null = null;
+          for (const quality of [0.9, 0.8, 0.7, 0.6, 0.5]) {
+            blob = await encode(quality);
+            if (blob.size <= 512 * 1024) break;
+          }
+          if (!blob || blob.size > 512 * 1024) {
+            throw new Error("Hasil potongan foto melebihi batas 512 KB.");
+          }
+
+          const reader = new FileReader();
+          reader.onload = () => {
+            if (typeof reader.result === "string") resolve(reader.result);
+            else reject(new Error("Hasil potongan foto tidak dapat dibaca."));
+          };
+          reader.onerror = () =>
+            reject(reader.error ?? new Error("Hasil potongan foto tidak dapat dibaca."));
+          reader.readAsDataURL(blob);
+        } catch (cropError) {
+          reject(cropError);
+        }
+      })();
+    };
+    image.onerror = () => reject(new Error("Foto tidak dapat dibuka untuk dipotong."));
+    image.src = photoDataUrl;
+  });
+}
+
+function CandidatePhotoCropEditor({
+  photoDataUrl,
+  alt,
+  variant,
+  onCancel,
+  onApply,
+}: {
+  photoDataUrl: string;
+  alt: string;
+  variant: PhotoCropVariant;
+  onCancel: () => void;
+  onApply: (photoDataUrl: string) => void;
+}) {
+  const previewCanvasRef = useRef<HTMLCanvasElement>(null);
+  const [zoom, setZoom] = useState(1);
+  const [rotation, setRotation] = useState(0);
+  const [horizontalPosition, setHorizontalPosition] = useState(50);
+  const [verticalPosition, setVerticalPosition] = useState(50);
+  const [imageReady, setImageReady] = useState(false);
+  const [savingCrop, setSavingCrop] = useState(false);
+  const [cropError, setCropError] = useState("");
+  const aspectRatio = variant === "mpk" ? 3 / 4 : 360 / 245;
+
+  useEffect(() => {
+    let active = true;
+    const image = new window.Image();
+    image.onload = () => {
+      if (!active) return;
+      try {
+        const rotatedPhoto = createRotatedPhotoCanvas(image, rotation);
+        const previewCanvas = previewCanvasRef.current;
+        const context = previewCanvas?.getContext("2d");
+        if (!previewCanvas || !context) {
+          throw new Error("Tidak dapat menampilkan pratinjau foto.");
+        }
+        drawCandidatePhotoCrop(
+          context,
+          rotatedPhoto,
+          rotatedPhoto.width,
+          rotatedPhoto.height,
+          previewCanvas.width,
+          previewCanvas.height,
+          aspectRatio,
+          zoom,
+          horizontalPosition,
+          verticalPosition,
+        );
+        setCropError("");
+        setImageReady(true);
+      } catch (error) {
+        setCropError(error instanceof Error ? error.message : "Tidak dapat menampilkan foto.");
+      }
+    };
+    image.onerror = () => {
+      if (active) setCropError("Foto tidak dapat dibuka untuk diputar.");
+    };
+    image.src = photoDataUrl;
+
+    return () => {
+      active = false;
+    };
+  }, [aspectRatio, horizontalPosition, photoDataUrl, rotation, verticalPosition, zoom]);
+
+  async function applyCrop() {
+    setSavingCrop(true);
+    setCropError("");
+    try {
+      const croppedPhoto = await cropCandidatePhoto(
+        photoDataUrl,
+        variant,
+        rotation,
+        zoom,
+        horizontalPosition,
+        verticalPosition,
+      );
+      onApply(croppedPhoto);
+    } catch (error) {
+      setCropError(
+        error instanceof Error ? error.message : "Tidak dapat memotong foto.",
+      );
+      setSavingCrop(false);
+    }
+  }
+
+  return (
+    <div
+      className="[position:fixed] [inset:0] [z-index:100] [display:grid] [place-items:center] [padding:20px] [background:rgba(22,35,29,.62)]"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="candidate-photo-crop-title"
+    >
+      <section className="[width:min(100%,_460px)] [max-height:calc(100vh_-_40px)] [overflow-y:auto] [padding:20px] [border:1px_solid_#eee6e3] [border-radius:12px] [background:#fff] [box-shadow:0_20px_60px_rgba(0,0,0,.2)]">
+        <div className="[display:flex] [align-items:flex-start] [justify-content:space-between] [gap:12px]">
+          <div>
+            <h2
+              id="candidate-photo-crop-title"
+              className="[margin:0] [color:#27392f] [font:800_17px_'Nunito',_'DM_Sans',_sans-serif]"
+            >
+              Atur potongan foto
+            </h2>
+            <p className="[margin:5px_0_14px] [color:#78827d] [font-size:10px]">
+              Geser foto dan atur zoom sampai tampilannya sesuai.
+            </p>
+          </div>
+          <button
+            type="button"
+            className="[width:30px] [height:30px] [flex:0_0_auto] [border:1px_solid_#e9ebe4] [border-radius:6px] [color:#647168] [background:#fff] [font-size:18px] [cursor:pointer] [&:disabled]:[opacity:.6]"
+            aria-label="Tutup pengaturan potongan foto"
+            disabled={savingCrop}
+            onClick={onCancel}
+          >
+            ×
+          </button>
+        </div>
+        <div
+          className="[position:relative] [width:min(100%,_360px)] [margin:0_auto] [overflow:hidden] [border:1px_solid_#e5e6df] [border-radius:8px] [background:linear-gradient(145deg,_#f8e9e9,_#f2e4d8)]"
+          style={{ aspectRatio: String(aspectRatio) }}
+        >
+          <canvas
+            ref={previewCanvasRef}
+            className="[block] [width:100%] [height:100%] [object-fit:contain]"
+            width={720}
+            height={Math.round(720 / aspectRatio)}
+            role="img"
+            aria-label={alt}
+          />
+        </div>
+        <div className="[display:grid] [gap:10px] [margin-top:16px] [&_label]:[display:grid] [&_label]:[gap:5px] [&_label]:[color:#647168] [&_label]:[font-size:9px] [&_label]:[font-weight:700] [&_input]:[width:100%] [&_input]:[accent-color:#a93646] [&_input:disabled]:[opacity:.6]">
+          <div className="[display:flex] [align-items:center] [gap:8px]">
+            <span className="[margin-right:auto] [color:#647168] [font-size:9px] [font-weight:700]">
+              Putar foto · {rotation}°
+            </span>
+            <button
+              type="button"
+              className="[min-height:30px] [padding:0_9px] [border:1px_solid_#eadbdd] [border-radius:5px] [color:#a93646] [background:#fff8f8] [font-size:9px] [font-weight:700] [cursor:pointer] [&:disabled]:[opacity:.6]"
+              aria-label="Putar foto ke kiri 90 derajat"
+              disabled={savingCrop}
+              onClick={() => setRotation((current) => (current + 270) % 360)}
+            >
+              ↶ 90°
+            </button>
+            <button
+              type="button"
+              className="[min-height:30px] [padding:0_9px] [border:1px_solid_#eadbdd] [border-radius:5px] [color:#a93646] [background:#fff8f8] [font-size:9px] [font-weight:700] [cursor:pointer] [&:disabled]:[opacity:.6]"
+              aria-label="Putar foto ke kanan 90 derajat"
+              disabled={savingCrop}
+              onClick={() => setRotation((current) => (current + 90) % 360)}
+            >
+              ↻ 90°
+            </button>
+          </div>
+          <label>
+            Zoom
+            <input
+              type="range"
+              min="1"
+              max="3"
+              step="0.01"
+              value={zoom}
+              disabled={savingCrop}
+              onChange={(event) => setZoom(Number(event.target.value))}
+            />
+          </label>
+          <label>
+            Geser horizontal
+            <input
+              type="range"
+              min="0"
+              max="100"
+              value={horizontalPosition}
+              disabled={savingCrop}
+              onChange={(event) => setHorizontalPosition(Number(event.target.value))}
+            />
+          </label>
+          <label>
+            Geser vertikal
+            <input
+              type="range"
+              min="0"
+              max="100"
+              value={verticalPosition}
+              disabled={savingCrop}
+              onChange={(event) => setVerticalPosition(Number(event.target.value))}
+            />
+          </label>
+        </div>
+        {cropError && (
+          <p className="[margin:12px_0_0] [color:#b6473d] [font-size:9px]" role="alert">
+            {cropError}
+          </p>
+        )}
+        <div className="[display:flex] [justify-content:flex-end] [gap:8px] [margin-top:18px]">
+          <button
+            type="button"
+            className="[min-height:36px] [padding:0_12px] [border:1px_solid_#e5e6df] [border-radius:6px] [color:#647168] [background:#fff] [font-size:9px] [font-weight:700] [cursor:pointer] [&:disabled]:[opacity:.6]"
+            disabled={savingCrop}
+            onClick={onCancel}
+          >
+            Batal
+          </button>
+          <button
+            type="button"
+            className="[min-height:36px] [padding:0_12px] [border:0] [border-radius:6px] [color:#fff] [background:#a93646] [font-size:9px] [font-weight:700] [cursor:pointer] [&:disabled]:[opacity:.6]"
+            disabled={savingCrop || !imageReady}
+            onClick={() => void applyCrop()}
+          >
+            {savingCrop ? "Memotong..." : "Terapkan potongan"}
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function CandidatePhotoPreview({
+  photoDataUrl,
+  alt,
+  variant,
+  disabled,
+  onRemove,
+  onApply,
+}: {
+  photoDataUrl: string;
+  alt: string;
+  variant: "mpk" | "pair";
+  disabled: boolean;
+  onRemove: () => void;
+  onApply: (photoDataUrl: string) => void;
+}) {
+  const [cropOpen, setCropOpen] = useState(false);
+
+  return (
+    <>
+      <div className="mpk-member-photo-preview motion-safe:animate-content-in [display:grid] [justify-items:start] [gap:7px] [margin-top:8px]">
+        <span className="[color:#647168] [font-size:8px] [font-weight:700]">
+          Pratinjau tampilan halaman pemilih
+        </span>
+        <div
+          className={`candidate-photo-preview-frame [position:relative] [display:grid] [overflow:hidden] [place-items:center] [border:1px_solid_#eee6e3] [border-radius:7px] [background:linear-gradient(145deg,_#f8e9e9,_#f2e4d8)] ${
+            variant === "mpk"
+              ? "[width:min(100%,_180px)] [height:240px] max-[760px]:[height:210px] max-[420px]:[height:195px]"
+              : "[width:100%] [height:245px] max-[760px]:[height:205px]"
+          }`}
+        >
+          <Image
+            className="[width:100%] [height:100%] [object-fit:contain]"
+            src={photoDataUrl}
+            alt={alt}
+            width={360}
+            height={240}
+            unoptimized
+          />
+          <span className="candidate-photo-preview-label [position:absolute] [right:7px] [bottom:7px] [padding:4px_6px] [border-radius:4px] [color:#745a59] [background:rgba(255,255,255,.86)] [font-size:6px] [font-weight:800] [letter-spacing:.6px]">
+            FOTO
+          </span>
+        </div>
+        <div className="[display:flex] [flex-wrap:wrap] [gap:7px]">
+          <button
+            type="button"
+            className="[min-height:28px] [padding:0_8px] [border:1px_solid_#eadbdd] [border-radius:5px] [color:#a93646] [background:#fff8f8] [font-size:8px] [font-weight:700] [cursor:pointer] [&:disabled]:[opacity:.6] [&:disabled]:[cursor:wait]"
+            disabled={disabled}
+            onClick={() => setCropOpen(true)}
+          >
+            Atur potongan
+          </button>
+          <button
+            type="button"
+            className="remove-photo-button [min-height:28px] [padding:0_8px] [border:1px_solid_#f0d7d9] [border-radius:5px] [color:#a93646] [background:#fff7f7] [font-size:8px] [cursor:pointer] [&:disabled]:[opacity:.6] [&:disabled]:[cursor:wait]"
+            disabled={disabled}
+            onClick={onRemove}
+          >
+            Hapus foto
+          </button>
+        </div>
+      </div>
+      {cropOpen && (
+        <CandidatePhotoCropEditor
+          photoDataUrl={photoDataUrl}
+          alt={alt}
+          variant={variant}
+          onCancel={() => setCropOpen(false)}
+          onApply={(croppedPhoto) => {
+            onApply(croppedPhoto);
+            setCropOpen(false);
+          }}
+        />
+      )}
+    </>
+  );
 }
 
 export default function AdminDashboard({ onLogout }: { onLogout: () => Promise<void> }) {
@@ -87,6 +510,11 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => Promise<v
   const [mpkMembers, setMpkMembers] = useState<
     Record<"chair" | "vice", MpkMember[]> | null
   >(null);
+  const [organizationLogos, setOrganizationLogos] = useState<OrganizationLogos>({
+    mpk: "",
+    osis: "",
+    ky: "",
+  });
   const [candidateError, setCandidateError] = useState("");
   const [candidateMessage, setCandidateMessage] = useState("");
   const [savingCandidates, setSavingCandidates] = useState(false);
@@ -96,12 +524,19 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => Promise<v
     try {
       const response = await fetch("/api/election/candidates", { cache: "no-store" });
       const data = (await response.json()) as Partial<ElectionCandidates> & { error?: string };
-      if (!response.ok || !data.organizations || !data.mpkMembers || !data.candidateCounts) {
+      if (
+        !response.ok ||
+        !data.organizations ||
+        !data.mpkMembers ||
+        !data.candidateCounts ||
+        !data.organizationLogos
+      ) {
         throw new Error(data.error ?? "Gagal memuat pasangan calon.");
       }
       setCandidateConfigurations(data.organizations);
       setMpkMembers(data.mpkMembers);
       setCandidateCounts(data.candidateCounts);
+      setOrganizationLogos(data.organizationLogos);
     } catch (loadError) {
       setCandidateError(
         loadError instanceof Error ? loadError.message : "Tidak dapat memuat pasangan calon.",
@@ -214,6 +649,19 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => Promise<v
     }
   }
 
+  async function handleOrganizationLogoChange(organizationId: OrganizationId, file: File) {
+    setCandidateError("");
+    try {
+      const logoDataUrl = await readCandidatePhoto(file, "Logo organisasi");
+      setOrganizationLogos((current) => ({ ...current, [organizationId]: logoDataUrl }));
+      setCandidateMessage("");
+    } catch (logoError) {
+      setCandidateError(
+        logoError instanceof Error ? logoError.message : "Tidak dapat membaca logo organisasi.",
+      );
+    }
+  }
+
   function addCandidate(organizationId: "osis" | "ky") {
     setCandidateConfigurations((current) => {
       if (!current) return current;
@@ -275,21 +723,30 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => Promise<v
             ky: candidateConfigurations.ky.slice(0, candidateCounts.ky),
           },
           mpkMembers,
+          organizationLogos,
         }),
       });
       const data = (await response.json()) as {
         organizations?: CandidateConfigurations;
         mpkMembers?: Record<"chair" | "vice", MpkMember[]>;
         candidateCounts?: Record<"osis" | "ky", number>;
+        organizationLogos?: OrganizationLogos;
         error?: string;
       };
-      if (!response.ok || !data.organizations || !data.mpkMembers || !data.candidateCounts) {
+      if (
+        !response.ok ||
+        !data.organizations ||
+        !data.mpkMembers ||
+        !data.candidateCounts ||
+        !data.organizationLogos
+      ) {
         throw new Error(data.error ?? "Perubahan pasangan calon belum dapat disimpan.");
       }
       setCandidateConfigurations(data.organizations);
       setMpkMembers(data.mpkMembers);
       setCandidateCounts(data.candidateCounts);
-      setCandidateMessage("Perubahan kandidat berhasil disimpan.");
+      setOrganizationLogos(data.organizationLogos);
+      setCandidateMessage("Perubahan kandidat dan logo berhasil disimpan.");
       await loadResults();
     } catch (saveError) {
       setCandidateError(
@@ -498,6 +955,84 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => Promise<v
               {savingCandidates ? <><span className="mr-2 inline-block motion-safe:animate-spin" aria-hidden="true">↻</span>Menyimpan...</> : "Simpan perubahan"}
             </button>
           </div>
+          <section
+            className="[margin-top:18px] [padding:14px] [border:1px_solid_#e9ebe4] [border-radius:9px] [background:#fbfcf8]"
+            aria-labelledby="organization-logo-title"
+          >
+            <h3
+              id="organization-logo-title"
+              className="[margin:0_0_4px] [color:#35473d] [font-size:11px] [font-weight:700]"
+            >
+              Logo organisasi
+            </h3>
+            <p className="[margin:0_0_12px] [color:#838d84] [font-size:9px]">
+              Atur logo yang tampil pada halaman pemilih. Format JPG, PNG, atau WebP, maksimal 512 KB.
+            </p>
+            <div className="[display:grid] [grid-template-columns:repeat(3,_minmax(0,_1fr))] [gap:10px] max-[760px]:[grid-template-columns:1fr]">
+              {(["mpk", "osis", "ky"] as const).map((organizationId) => (
+                <article
+                  key={organizationId}
+                  className="[display:grid] [grid-template-columns:64px_minmax(0,_1fr)] [align-items:center] [gap:10px] [padding:10px] [border:1px_solid_#e9ebe4] [border-radius:7px] [background:#fff]"
+                >
+                  <div className="[display:grid] [width:64px] [height:64px] [place-items:center] [overflow:hidden] [border:1px_solid_#edf0e9] [border-radius:8px] [color:#7a8776] [background:#f7f8f2]">
+                    {organizationLogos[organizationId] ? (
+                      <Image
+                        src={organizationLogos[organizationId]}
+                        alt={`Logo ${organizationId.toUpperCase()}`}
+                        width={64}
+                        height={64}
+                        unoptimized
+                        className="[width:100%] [height:100%] [object-fit:contain]"
+                      />
+                    ) : (
+                      <span className="[font:800_19px_'Manrope',_sans-serif]">
+                        {organizationId.toUpperCase()}
+                      </span>
+                    )}
+                  </div>
+                  <div className="[display:grid] [min-width:0] [gap:6px]">
+                    <strong className="[color:#35473d] [font-size:10px]">
+                      {organizationId.toUpperCase()}
+                    </strong>
+                    <label
+                      className="[display:grid] [gap:4px] [color:#647168] [font-size:8px] [font-weight:700]"
+                      htmlFor={`${organizationId}-logo-upload`}
+                    >
+                      Pilih logo
+                      <input
+                        id={`${organizationId}-logo-upload`}
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp"
+                        disabled={savingCandidates}
+                        className="[min-width:0] [color:#78827d] [font-size:8px] [&::file-selector-button]:[margin-right:5px] [&::file-selector-button]:[padding:5px_7px] [&::file-selector-button]:[border:1px_solid_#eadbdd] [&::file-selector-button]:[border-radius:5px] [&::file-selector-button]:[color:#a93646] [&::file-selector-button]:[background:#fff8f8] [&::file-selector-button]:[font:inherit] [&::file-selector-button]:[cursor:pointer]"
+                        onChange={(event) => {
+                          const file = event.target.files?.[0];
+                          event.target.value = "";
+                          if (file) void handleOrganizationLogoChange(organizationId, file);
+                        }}
+                      />
+                    </label>
+                    {organizationLogos[organizationId] && (
+                      <button
+                        type="button"
+                        className="[justify-self:start] [padding:4px_7px] [border:1px_solid_#f0d7d9] [border-radius:5px] [color:#a93646] [background:#fff7f7] [font-size:8px] [cursor:pointer] [&:disabled]:[opacity:.6]"
+                        disabled={savingCandidates}
+                        onClick={() => {
+                          setOrganizationLogos((current) => ({
+                            ...current,
+                            [organizationId]: "",
+                          }));
+                          setCandidateMessage("");
+                        }}
+                      >
+                        Hapus logo
+                      </button>
+                    )}
+                  </div>
+                </article>
+              ))}
+            </div>
+          </section>
           <div className="candidate-management-grid [display:grid] [grid-template-columns:repeat(3,_minmax(0,_1fr))] [gap:12px] [margin-top:17px] max-[760px]:[grid-template-columns:1fr]">
             {mpkMembers && (
               <article className="candidate-management-card motion-safe:animate-content-in [min-width:0] [padding:14px] [border:1px_solid_#f0e9e7] [border-radius:9px] [background:#fffdfd] [&_h3]:[margin:0_0_12px] [&_h3]:[color:#a93646] [&_h3]:[font-size:12px]" key="mpk">
@@ -605,23 +1140,16 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => Promise<v
                                 }}
                               />
                               {member.photoDataUrl && (
-                                <div className="mpk-member-photo-preview motion-safe:animate-content-in [display:flex] [align-items:flex-start] [gap:8px] [margin-top:8px] [&_img]:[width:64px] [&_img]:[height:64px] [&_img]:[object-fit:cover] [&_img]:[border:1px_solid_#eee6e3] [&_img]:[border-radius:6px]">
-                                  <Image
-                                    src={member.photoDataUrl}
-                                    alt={`Foto ${member.name}`}
-                                    width={96}
-                                    height={96}
-                                    unoptimized
-                                  />
-                                  <button
-                                    type="button"
-                                    className="remove-photo-button [min-height:28px] [padding:0_8px] [border:1px_solid_#f0d7d9] [border-radius:5px] [color:#a93646] [background:#fff7f7] [font-size:8px] [cursor:pointer] [&:disabled]:[opacity:.6] [&:disabled]:[cursor:wait]"
-                                    disabled={savingCandidates}
-                                    onClick={() => updateMpkMember(member.id, "photoDataUrl", "")}
-                                  >
-                                    Hapus foto
-                                  </button>
-                                </div>
+                                <CandidatePhotoPreview
+                                  photoDataUrl={member.photoDataUrl}
+                                  alt={`Foto ${member.name}`}
+                                  variant="mpk"
+                                  disabled={savingCandidates}
+                                  onRemove={() => updateMpkMember(member.id, "photoDataUrl", "")}
+                                  onApply={(photoDataUrl) =>
+                                    updateMpkMember(member.id, "photoDataUrl", photoDataUrl)
+                                  }
+                                />
                               )}
                             </div>
                             <label className="mpk-member-text-field" htmlFor={`${position}-${member.id}-vision`}>
@@ -775,25 +1303,23 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => Promise<v
                           }}
                         />
                         {candidate.photoDataUrl && (
-                          <div className="mpk-member-photo-preview motion-safe:animate-content-in [display:flex] [align-items:flex-start] [gap:8px] [margin-top:8px] [&_img]:[width:64px] [&_img]:[height:64px] [&_img]:[object-fit:cover] [&_img]:[border:1px_solid_#eee6e3] [&_img]:[border-radius:6px]">
-                            <Image
-                              src={candidate.photoDataUrl}
-                              alt={`Foto pasangan ${candidate.name} dan ${candidate.viceName}`}
-                              width={96}
-                              height={96}
-                              unoptimized
-                            />
-                            <button
-                              type="button"
-                              className="remove-photo-button [min-height:28px] [padding:0_8px] [border:1px_solid_#f0d7d9] [border-radius:5px] [color:#a93646] [background:#fff7f7] [font-size:8px] [cursor:pointer] [&:disabled]:[opacity:.6] [&:disabled]:[cursor:wait]"
-                              disabled={savingCandidates}
-                              onClick={() =>
-                                updateCandidate(organizationId, candidate.id, "photoDataUrl", "")
-                              }
-                            >
-                              Hapus foto
-                            </button>
-                          </div>
+                          <CandidatePhotoPreview
+                            photoDataUrl={candidate.photoDataUrl}
+                            alt={`Foto pasangan ${candidate.name} dan ${candidate.viceName}`}
+                            variant="pair"
+                            disabled={savingCandidates}
+                            onRemove={() =>
+                              updateCandidate(organizationId, candidate.id, "photoDataUrl", "")
+                            }
+                            onApply={(photoDataUrl) =>
+                              updateCandidate(
+                                organizationId,
+                                candidate.id,
+                                "photoDataUrl",
+                                photoDataUrl,
+                              )
+                            }
+                          />
                         )}
                         <label htmlFor={`${candidate.id}-vision`}>Visi</label>
                         <textarea

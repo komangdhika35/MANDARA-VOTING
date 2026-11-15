@@ -31,6 +31,7 @@ const organizations: {
   description: string;
   color: string;
   initials: string;
+  logoDataUrl?: string;
   candidates: Candidate[];
 }[] = [
   {
@@ -241,13 +242,15 @@ export default function Home() {
           mpkMembers?: ElectionCandidates["mpkMembers"];
           organizations?: CandidateConfigurations;
           candidateCounts?: ElectionCandidates["candidateCounts"];
+          organizationLogos?: ElectionCandidates["organizationLogos"];
           error?: string;
         };
         if (
           !candidateResponse.ok ||
           !candidateData.organizations ||
           !candidateData.mpkMembers ||
-          !candidateData.candidateCounts
+          !candidateData.candidateCounts ||
+          !candidateData.organizationLogos
         ) {
           throw new Error(candidateData.error ?? "Gagal memuat pasangan calon.");
         }
@@ -255,6 +258,7 @@ export default function Home() {
           organizations: candidateData.organizations,
           mpkMembers: candidateData.mpkMembers,
           candidateCounts: candidateData.candidateCounts,
+          organizationLogos: candidateData.organizationLogos,
         });
         if (response.status === 401) return;
 
@@ -293,6 +297,7 @@ export default function Home() {
   const electionOrganizations = useMemo<typeof organizations>(() => {
     return organizations.map((organization) => ({
       ...organization,
+      logoDataUrl: electionCandidates?.organizationLogos[organization.id] ?? "",
       candidates:
         organization.id === "mpk"
           ? [
@@ -307,6 +312,7 @@ export default function Home() {
               viceName: "",
               number: "",
               className: "",
+              photoDataUrl: member.photoDataUrl,
               initials: member.name
                 .trim()
                 .split(/\s+/)
@@ -779,6 +785,16 @@ export default function Home() {
         {isMpkPoster ? (
           <section className="mpk-poster-page [padding:42px_0_34px] max-[760px]:[padding-top:24px] min-[1000px]:[padding:10px_0_8px]" aria-labelledby="mpk-poster-title">
             <header className="mpk-poster-heading motion-safe:animate-content-in [position:relative] [margin-bottom:24px] [padding:29px_32px] [border:1px_solid_#f1dfdf] [border-radius:14px] [background:radial-gradient(ellipse_at_92%_10%,_rgba(201,_50,_70,_.1),_transparent_34%),_linear-gradient(120deg,_#fff_20%,_#fff8f8)] [&_.eyebrow]:[color:#a76b70] [&_.live-dot]:[background:#c93246] [&_.live-dot]:[box-shadow:0_0_0_3px_rgba(201,_50,_70,_.12)] [&_h1]:[margin:11px_0_6px] [&_h1]:[color:#37282b] [&_h1]:[font:800_clamp(27px,_4vw,_39px)/1.1_'Nunito',_'DM_Sans',_sans-serif] [&_h1]:[letter-spacing:-1.3px] [&_>_p]:[margin:0] [&_>_p]:[color:#897a7b] [&_>_p]:[font-size:11px] max-[760px]:[padding:23px_20px] max-[760px]:[&_h1]:[max-width:70%] max-[420px]:[padding:20px_14px] max-[420px]:[&_h1]:[max-width:100%] max-[420px]:[&_h1]:[padding-right:0] max-[420px]:[&_h1]:[font-size:27px] min-[1000px]:[flex:0_0_auto] min-[1000px]:[margin-bottom:10px] min-[1000px]:[padding:12px_18px] min-[1000px]:[border-radius:10px] min-[1000px]:[&_h1]:[margin:5px_0_3px] min-[1000px]:[&_h1]:[font-size:23px] min-[1000px]:[&_>_p]:[font-size:9px] min-[1000px]:[&_.mpk-poster-notice]:[display:none] min-[1000px]:[&_.mpk-poster-count]:[top:15px] min-[1000px]:[&_.mpk-poster-count]:[right:18px]">
+              {currentOrganization.logoDataUrl && (
+                <Image
+                  src={currentOrganization.logoDataUrl}
+                  alt="Logo MPK"
+                  width={42}
+                  height={42}
+                  unoptimized
+                  className="[width:42px] [height:42px] [margin-bottom:7px] [object-fit:contain]"
+                />
+              )}
               <span className="eyebrow dark-eyebrow [font-size:9px] [font-weight:700] [letter-spacing:1.15px] [color:#849177]"><span className="live-dot [width:7px] [height:7px] [display:inline-block] [flex:0_0_auto] [border-radius:50%] [background:#cbe67c] [box-shadow:0_0_0_3px_rgba(203,_230,_124,_.13)]" /> PEMILIHAN CALON {mpkPosterPositionLabel.toUpperCase()} MPK 2026/2027</span>
               <h1 id="mpk-poster-title">Kenali calon {mpkPosterPositionLabel} MPK</h1>
               <p>Pilih dengan cermat calon yang paling mewakili aspirasi kelasmu.</p>
@@ -840,7 +856,7 @@ export default function Home() {
                       )}
                       <span className="mpk-poster-photo-label [position:absolute] [right:7px] [bottom:7px] [z-index:2] [padding:4px_6px] [border-radius:4px] [color:#745a59] [background:rgba(255,255,255,.86)] [font-size:6px] [font-weight:800] [letter-spacing:.6px]">{candidate?.photoDataUrl ? "FOTO" : "ILUSTRASI"}</span>
                     </span>
-                    <span className="mpk-poster-card-content [display:flex] [flex:1] [flex-direction:column] [padding:12px_12px_0] max-[420px]:[padding:10px_9px_0] min-[1000px]:[padding:8px_10px_0]">
+                    <span className="mpk-poster-card-content [display:flex] [flex:1] [flex-direction:column] [margin:0_8px] [padding:12px_12px_0] [border-left:1px_solid_#f1d7d9] [border-right:1px_solid_#f1d7d9] max-[420px]:[padding:10px_9px_0] min-[1000px]:[padding:8px_10px_0]">
                       <strong className="mpk-poster-name [min-height:38px] [color:#35473d] [font:800_15px/1.35_'Manrope',_sans-serif] [overflow-wrap:anywhere] max-[420px]:[min-height:32px] max-[420px]:[font-size:12px] min-[1000px]:[min-height:26px] min-[1000px]:[font-size:10px] min-[1000px]:[line-height:1.2]">
                         {candidateName}
                       </strong>
@@ -895,6 +911,16 @@ export default function Home() {
         ) : isPairPoster ? (
           <section className="mpk-poster-page pair-poster-page [padding:42px_0_34px] max-[760px]:[padding-top:24px] [max-width:920px] [margin:0_auto]" aria-labelledby="pair-poster-title">
             <header className="mpk-poster-heading motion-safe:animate-content-in [position:relative] [margin-bottom:24px] [padding:29px_32px] [border:1px_solid_#f1dfdf] [border-radius:14px] [background:radial-gradient(ellipse_at_92%_10%,_rgba(201,_50,_70,_.1),_transparent_34%),_linear-gradient(120deg,_#fff_20%,_#fff8f8)] [&_.eyebrow]:[color:#a76b70] [&_.live-dot]:[background:#c93246] [&_.live-dot]:[box-shadow:0_0_0_3px_rgba(201,_50,_70,_.12)] [&_h1]:[margin:11px_0_6px] [&_h1]:[color:#37282b] [&_h1]:[font:800_clamp(27px,_4vw,_39px)/1.1_'Nunito',_'DM_Sans',_sans-serif] [&_h1]:[letter-spacing:-1.3px] [&_>_p]:[margin:0] [&_>_p]:[color:#897a7b] [&_>_p]:[font-size:11px] max-[760px]:[padding:23px_20px] max-[760px]:[&_h1]:[max-width:70%] max-[420px]:[padding:20px_14px] max-[420px]:[&_h1]:[max-width:100%] max-[420px]:[&_h1]:[padding-right:0] max-[420px]:[&_h1]:[font-size:27px]">
+              {currentOrganization.logoDataUrl && (
+                <Image
+                  src={currentOrganization.logoDataUrl}
+                  alt={`Logo ${currentOrganization.name}`}
+                  width={42}
+                  height={42}
+                  unoptimized
+                  className="[width:42px] [height:42px] [margin-bottom:7px] [object-fit:contain]"
+                />
+              )}
               <span className="eyebrow dark-eyebrow [font-size:9px] [font-weight:700] [letter-spacing:1.15px] [color:#849177]"><span className="live-dot [width:7px] [height:7px] [display:inline-block] [flex:0_0_auto] [border-radius:50%] [background:#cbe67c] [box-shadow:0_0_0_3px_rgba(203,_230,_124,_.13)]" /> PEMILIHAN {currentOrganization.name} 2026/2027</span>
               <h1 id="pair-poster-title">Kenali paslon {currentOrganization.name}</h1>
               <p>Pilih satu pasangan calon ketua dan wakil yang paling mewakili harapanmu.</p>
@@ -938,7 +964,7 @@ export default function Home() {
                       )}
                       <span className="mpk-poster-photo-label [position:absolute] [right:7px] [bottom:7px] [z-index:2] [padding:4px_6px] [border-radius:4px] [color:#745a59] [background:rgba(255,255,255,.86)] [font-size:6px] [font-weight:800] [letter-spacing:.6px]">{candidate.photoDataUrl ? "FOTO" : "ILUSTRASI"}</span>
                     </span>
-                    <span className="pair-poster-names [display:grid] [width:100%] [grid-template-columns:minmax(0,_1fr)_40px_minmax(0,_1fr)] [align-items:center] [column-gap:12px] [row-gap:10px] [padding:19px_24px_0] [text-align:center] [&_>_span:not(.pair-poster-plus)]:[display:flex] [&_>_span:not(.pair-poster-plus)]:[width:100%] [&_>_span:not(.pair-poster-plus)]:[min-width:0] [&_>_span:not(.pair-poster-plus)]:[align-items:center] [&_>_span:not(.pair-poster-plus)]:[flex-direction:column] [&_>_span:not(.pair-poster-plus)]:[gap:7px] [&_small]:[color:#a93646] [&_small]:[font-size:9px] [&_small]:[font-weight:800] [&_small]:[letter-spacing:.8px] [&_strong]:[color:#35473d] [&_strong]:[font:800_16px/1.4_'Manrope',_sans-serif] [&_strong]:[overflow-wrap:anywhere] max-[760px]:[grid-template-columns:minmax(0,_1fr)_36px_minmax(0,_1fr)] max-[760px]:[column-gap:8px] max-[760px]:[padding:16px_18px_0] max-[420px]:[grid-template-columns:minmax(0,_1fr)_28px_minmax(0,_1fr)] max-[420px]:[column-gap:5px] max-[420px]:[padding:14px_12px_0] max-[420px]:[&_small]:[font-size:8px] max-[420px]:[&_strong]:[font-size:13px]">
+                    <span className="pair-poster-names [display:grid] [width:calc(100%_-_24px)] [margin:0_12px] [border-left:1px_solid_#f1d7d9] [border-right:1px_solid_#f1d7d9] [grid-template-columns:minmax(0,_1fr)_40px_minmax(0,_1fr)] [align-items:center] [column-gap:12px] [row-gap:10px] [padding:19px_24px_0] [text-align:center] [&_>_span:not(.pair-poster-plus)]:[display:flex] [&_>_span:not(.pair-poster-plus)]:[width:100%] [&_>_span:not(.pair-poster-plus)]:[min-width:0] [&_>_span:not(.pair-poster-plus)]:[align-items:center] [&_>_span:not(.pair-poster-plus)]:[flex-direction:column] [&_>_span:not(.pair-poster-plus)]:[gap:7px] [&_small]:[color:#a93646] [&_small]:[font-size:9px] [&_small]:[font-weight:800] [&_small]:[letter-spacing:.8px] [&_strong]:[color:#35473d] [&_strong]:[font:800_16px/1.4_'Manrope',_sans-serif] [&_strong]:[overflow-wrap:anywhere] max-[760px]:[grid-template-columns:minmax(0,_1fr)_36px_minmax(0,_1fr)] max-[760px]:[column-gap:8px] max-[760px]:[padding:16px_18px_0] max-[420px]:[grid-template-columns:minmax(0,_1fr)_28px_minmax(0,_1fr)] max-[420px]:[column-gap:5px] max-[420px]:[padding:14px_12px_0] max-[420px]:[&_small]:[font-size:8px] max-[420px]:[&_strong]:[font-size:13px]">
                       <span><small>CALON KETUA</small><strong>{candidate.name}</strong><i className="[display:block] [width:24px] [height:2px] [margin:2px_auto_0] [border-radius:2px] [background:#eadcda]" aria-hidden="true" /></span>
                       <span className="pair-poster-plus [display:grid] [width:40px] [align-self:stretch] [place-items:center] [justify-self:center] [margin:0] [color:#bd3548] [font:800_20px_'Manrope',_sans-serif] [line-height:1] [text-align:center] max-[760px]:[width:36px] max-[420px]:[width:28px]" aria-hidden="true">&amp;</span>
                       <span><small>CALON WAKIL</small><strong>{candidate.viceName}</strong><i className="[display:block] [width:24px] [height:2px] [margin:2px_auto_0] [border-radius:2px] [background:#eadcda]" aria-hidden="true" /></span>
@@ -999,7 +1025,20 @@ export default function Home() {
                     }}
                     aria-current={isActive ? "step" : undefined}
                   >
-                    <span className={`organization-icon  [width:34px] [height:34px] [flex:0_0_auto] [border-radius:9px] [display:grid] [place-items:center] [font:700_13px_'Manrope',_sans-serif] max-[760px]:[width:28px] max-[760px]:[height:28px] max-[760px]:[border-radius:7px] max-[760px]:[font-size:11px] max-[420px]:[width:25px] max-[420px]:[height:25px]${organization.color} ${isActive ? "motion-safe:animate-check-pop" : ""}`}>{organization.initials}</span>
+                    <span className={`organization-icon  [width:34px] [height:34px] [flex:0_0_auto] [border-radius:9px] [display:grid] [place-items:center] [font:700_13px_'Manrope',_sans-serif] max-[760px]:[width:28px] max-[760px]:[height:28px] max-[760px]:[border-radius:7px] max-[760px]:[font-size:11px] max-[420px]:[width:25px] max-[420px]:[height:25px]${organization.color} ${isActive ? "motion-safe:animate-check-pop" : ""}`}>
+                      {organization.logoDataUrl ? (
+                        <Image
+                          src={organization.logoDataUrl}
+                          alt={`Logo ${organization.name}`}
+                          width={34}
+                          height={34}
+                          unoptimized
+                          className="[width:100%] [height:100%] [border-radius:inherit] [background:#fff] [object-fit:contain]"
+                        />
+                      ) : (
+                        organization.initials
+                      )}
+                    </span>
                     <span className="organization-copy [min-width:0] [flex:1] [&_strong]:[display:block] [&_strong]:[color:#34483e] [&_strong]:[font-size:10px] [&_small]:[display:block] [&_small]:[max-width:145px] [&_small]:[margin-top:3px] [&_small]:[overflow:hidden] [&_small]:[color:#919990] [&_small]:[font-size:8px] [&_small]:[text-overflow:ellipsis] [&_small]:[white-space:nowrap] max-[760px]:[&_strong]:[font-size:9px] max-[760px]:[&_small]:[max-width:74px] max-[760px]:[&_small]:[font-size:7px] max-[420px]:[text-align:center] max-[420px]:[&_small]:[max-width:87px]"><strong>{organization.name}</strong><small>{organization.fullName}</small></span>
                     <span className={`organization-status  [width:23px] [height:23px] [border:1px_solid_#e9ece3] [border-radius:50%] [display:grid] [place-items:center] [color:#a2aaa0] [font-size:8px] [&.done]:[border-color:#dbe8c5] [&.done]:[color:#50713e] [&.done]:[background:#edf4df] [&.done]:[font-size:12px] max-[760px]:[display:none]${hasVoted ? "done" : ""}`}>{hasVoted ? "✓" : `0${index + 1}`}</span>
                   </button>
@@ -1174,7 +1213,7 @@ export default function Home() {
                           <span className="photo-spark motion-safe:animate-float [position:absolute] [z-index:2] [top:14px] [right:15px] [color:rgba(255,255,255,.8)] [font-size:18px]">✳</span>
                           <span className="photo-orbit [position:absolute] [width:115px] [height:115px] [border:1px_solid_rgba(255,255,255,.55)] [border-radius:50%]" />
                         </span>
-                        <span className="candidate-info [min-height:101px] [display:flex] [flex-direction:column] max-[420px]:[min-height:105px] [&_.candidate-name]:[margin-top:2px] max-[760px]:[min-height:0]">
+                        <span className="candidate-info [min-height:101px] [display:flex] [flex-direction:column] [margin:0_5px] [padding:0_6px] [border-left:1px_solid_#f1d7d9] [border-right:1px_solid_#f1d7d9] max-[420px]:[min-height:105px] [&_.candidate-name]:[margin-top:2px] max-[760px]:[min-height:0]">
                           <span className="candidate-role [color:#a17d80] [font-size:7px] [font-weight:700] [letter-spacing:.35px] [text-transform:uppercase]">Calon ketua</span>
                           <strong className="candidate-name [color:#30453b] [font:700_12px_'Manrope',_sans-serif] [letter-spacing:-.3px] max-[760px]:[font-size:10px] max-[420px]:[font-size:9px]">{candidate.name}</strong>
                           <span className="[width:22px] [height:2px] [margin-top:4px] [border-radius:2px] [background:#eadcda]" aria-hidden="true" />
@@ -1217,9 +1256,27 @@ export default function Home() {
 
       {isMpkPoster && (
         <div className="mpk-poster-action-bar [position:fixed] [z-index:8] [right:0] [bottom:0] [left:0] [display:flex] [align-items:center] [justify-content:space-between] [gap:20px] [min-height:83px] [padding:13px_max(calc((100vw_-_1060px)_/_2),_32px)] [border-top:1px_solid_#eee4e3] [background:rgba(255,255,255,.97)] [box-shadow:0_-7px_25px_rgba(36,_45,_37,_.07)] [backdrop-filter:blur(12px)] max-[760px]:[min-height:76px] max-[760px]:[gap:10px] max-[760px]:[padding:10px_18px] max-[420px]:[align-items:stretch] max-[420px]:[flex-direction:column] max-[420px]:[gap:7px] max-[420px]:[padding:9px_13px]">
-          <div className="mpk-poster-action-copy [display:flex] [min-width:0] [flex-direction:column] [gap:4px] [&_strong]:[overflow:hidden] [&_strong]:[color:#35473d] [&_strong]:[font:800_12px_'Manrope',_sans-serif] [&_strong]:[text-overflow:ellipsis] [&_strong]:[white-space:nowrap] [&_span]:[color:#8b948b] [&_span]:[font-size:8px] max-[420px]:[display:none]">
-            <strong>{selectedCandidateDetails?.name ?? `Pilih calon ${mpkPosterPositionLabel} MPK`}</strong>
-            <span>{selectedCandidateDetails ? "Periksa pilihan sebelum mengirim suara." : "Pilih satu calon yang terdaftar untuk melanjutkan."}</span>
+          <div className="mpk-poster-action-copy [display:flex] [min-width:0] [align-items:center] [gap:10px] [&_strong]:[overflow:hidden] [&_strong]:[color:#35473d] [&_strong]:[font:800_12px_'Manrope',_sans-serif] [&_strong]:[text-overflow:ellipsis] [&_strong]:[white-space:nowrap] [&_span]:[color:#8b948b] [&_span]:[font-size:8px]">
+            {selectedCandidateDetails && (
+              selectedCandidateDetails.photoDataUrl ? (
+                <Image
+                  src={selectedCandidateDetails.photoDataUrl}
+                  alt={`Foto ${selectedCandidateDetails.name}`}
+                  width={46}
+                  height={46}
+                  unoptimized
+                  className="[width:46px] [height:46px] [flex:0_0_auto] [border:2px_solid_#f1dfdf] [border-radius:50%] [object-fit:cover]"
+                />
+              ) : (
+                <div className="[display:grid] [width:46px] [height:46px] [flex:0_0_auto] [place-items:center] [border:2px_solid_#f1dfdf] [border-radius:50%] [color:#a93646] [background:#fff0f1] [font:700_12px_'Manrope',_sans-serif]">
+                  {selectedCandidateDetails.initials}
+                </div>
+              )
+            )}
+            <div className="[display:flex] [min-width:0] [flex-direction:column] [gap:4px]">
+              <strong>{selectedCandidateDetails?.name ?? `Pilih calon ${mpkPosterPositionLabel} MPK`}</strong>
+              <span>{selectedCandidateDetails ? "Periksa pilihan sebelum mengirim suara." : "Pilih satu calon yang terdaftar untuk melanjutkan."}</span>
+            </div>
           </div>
           <button
             className="primary-button mpk-poster-action-button [height:44px] [border:0] [border-radius:7px] [display:inline-flex] [align-items:center] [justify-content:center] [gap:14px] [color:#f9faef] [background:#17483b] [font-size:10px] [font-weight:700] [cursor:pointer] [transition:background_.2s,_transform_.2s,_box-shadow_.2s,_opacity_.2s] [&:hover:not(:disabled)]:[background:#225d4b] [&:hover:not(:disabled)]:[transform:translateY(-1px)] [&:active:not(:disabled)]:[transform:translateY(0)_scale(.98)] [&:disabled]:[cursor:wait] [&:focus-visible]:[outline:3px_solid_#b5cd79] [&:focus-visible]:[outline-offset:3px] [&_span]:[font-size:15px] [&_span]:[font-weight:400] [min-width:220px] [padding:0_17px] [background:#c93246] [&:hover:not(:disabled)]:[background:#ad293b] [&:disabled]:[opacity:.58] [&:disabled]:[cursor:not-allowed] max-[760px]:[min-width:0] max-[760px]:[min-height:43px] max-[760px]:[padding:0_12px] max-[760px]:[font-size:9px] max-[420px]:[width:100%]"
@@ -1269,13 +1326,31 @@ export default function Home() {
 
       {isPairPoster && (
         <div className="mpk-poster-action-bar pair-poster-action-bar [position:fixed] [z-index:8] [right:0] [bottom:0] [left:0] [display:flex] [align-items:center] [justify-content:space-between] [gap:20px] [min-height:83px] [padding:13px_max(calc((100vw_-_1060px)_/_2),_32px)] [border-top:1px_solid_#eee4e3] [background:rgba(255,255,255,.97)] [box-shadow:0_-7px_25px_rgba(36,_45,_37,_.07)] [backdrop-filter:blur(12px)] max-[760px]:[min-height:76px] max-[760px]:[gap:10px] max-[760px]:[padding:10px_18px] max-[420px]:[align-items:stretch] max-[420px]:[flex-direction:column] max-[420px]:[gap:7px] max-[420px]:[padding:9px_13px]">
-          <div className="mpk-poster-action-copy [display:flex] [min-width:0] [flex-direction:column] [gap:4px] [&_strong]:[overflow:hidden] [&_strong]:[color:#35473d] [&_strong]:[font:800_12px_'Manrope',_sans-serif] [&_strong]:[text-overflow:ellipsis] [&_strong]:[white-space:nowrap] [&_span]:[color:#8b948b] [&_span]:[font-size:8px] max-[420px]:[display:none]">
-            <strong>
-              {selectedCandidateDetails
-                ? `${selectedCandidateDetails.name} & ${selectedCandidateDetails.viceName}`
-                : `Pilih satu paslon ${currentOrganization.name}`}
-            </strong>
-            <span>{selectedCandidateDetails ? "Periksa pilihan sebelum mengirim suara." : "Pilih paslon untuk melanjutkan."}</span>
+          <div className="mpk-poster-action-copy [display:flex] [min-width:0] [align-items:center] [gap:10px] [&_strong]:[overflow:hidden] [&_strong]:[color:#35473d] [&_strong]:[font:800_12px_'Manrope',_sans-serif] [&_strong]:[text-overflow:ellipsis] [&_strong]:[white-space:nowrap] [&_span]:[color:#8b948b] [&_span]:[font-size:8px]">
+            {selectedCandidateDetails && (
+              selectedCandidateDetails.photoDataUrl ? (
+                <Image
+                  src={selectedCandidateDetails.photoDataUrl}
+                  alt={`Foto pasangan ${selectedCandidateDetails.name} dan ${selectedCandidateDetails.viceName}`}
+                  width={46}
+                  height={46}
+                  unoptimized
+                  className="[width:46px] [height:46px] [flex:0_0_auto] [border:2px_solid_#f1dfdf] [border-radius:50%] [object-fit:cover]"
+                />
+              ) : (
+                <div className="[display:grid] [width:46px] [height:46px] [flex:0_0_auto] [place-items:center] [border:2px_solid_#f1dfdf] [border-radius:50%] [color:#a93646] [background:#fff0f1] [font:700_12px_'Manrope',_sans-serif]">
+                  {selectedCandidateDetails.initials}
+                </div>
+              )
+            )}
+            <div className="[display:flex] [min-width:0] [flex-direction:column] [gap:4px]">
+              <strong>
+                {selectedCandidateDetails
+                  ? `${selectedCandidateDetails.name} & ${selectedCandidateDetails.viceName}`
+                  : `Pilih satu paslon ${currentOrganization.name}`}
+              </strong>
+              <span>{selectedCandidateDetails ? "Periksa pilihan sebelum mengirim suara." : "Pilih paslon untuk melanjutkan."}</span>
+            </div>
           </div>
           <button
             className="primary-button mpk-poster-action-button [height:44px] [border:0] [border-radius:7px] [display:inline-flex] [align-items:center] [justify-content:center] [gap:14px] [color:#f9faef] [background:#17483b] [font-size:10px] [font-weight:700] [cursor:pointer] [transition:background_.2s,_transform_.2s,_box-shadow_.2s,_opacity_.2s] [&:hover:not(:disabled)]:[background:#225d4b] [&:hover:not(:disabled)]:[transform:translateY(-1px)] [&:active:not(:disabled)]:[transform:translateY(0)_scale(.98)] [&:disabled]:[cursor:wait] [&:focus-visible]:[outline:3px_solid_#b5cd79] [&:focus-visible]:[outline-offset:3px] [&_span]:[font-size:15px] [&_span]:[font-weight:400] [min-width:220px] [padding:0_17px] [background:#c93246] [&:hover:not(:disabled)]:[background:#ad293b] [&:disabled]:[opacity:.58] [&:disabled]:[cursor:not-allowed] max-[760px]:[min-width:0] max-[760px]:[min-height:43px] max-[760px]:[padding:0_12px] max-[760px]:[font-size:9px] max-[420px]:[width:100%]"

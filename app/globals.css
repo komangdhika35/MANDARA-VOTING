@@ -208,3 +208,29 @@
     }
   }
 }
+
+@layer components {
+  .mpk-poster-page .mpk-poster-portrait:not(.pair-poster-portrait) {
+    height: 240px !important;
+  }
+
+  .mpk-poster-page .mpk-poster-photo {
+    object-fit: contain !important;
+  }
+
+  .candidate-photo-image {
+    object-fit: contain !important;
+  }
+
+  @media (max-width: 760px) {
+    .mpk-poster-page .mpk-poster-portrait:not(.pair-poster-portrait) {
+      height: 210px !important;
+    }
+  }
+
+  @media (max-width: 420px) {
+    .mpk-poster-page .mpk-poster-portrait:not(.pair-poster-portrait) {
+      height: 195px !important;
+    }
+  }
+}

@@ -14,6 +14,8 @@ export type CandidateConfiguration = {
 
 export type CandidateConfigurations = Record<OrganizationId, CandidateConfiguration[]>;
 
+export type OrganizationLogos = Record<OrganizationId, string>;
+
 export type MpkMember = {
   id: string;
   name: string;
@@ -27,6 +29,7 @@ export type ElectionCandidates = {
   mpkMembers: Record<"chair" | "vice", MpkMember[]>;
   organizations: CandidateConfigurations;
   candidateCounts: Record<"osis" | "ky", number>;
+  organizationLogos: OrganizationLogos;
 };
 
 export const candidateIds: Record<OrganizationId, readonly string[]> = {

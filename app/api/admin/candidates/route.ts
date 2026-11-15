@@ -9,6 +9,7 @@ import {
   type CandidateConfiguration,
   type CandidateConfigurations,
   type MpkMember,
+  type OrganizationLogos,
 } from "@/lib/election";
 
 export const runtime = "nodejs";
@@ -66,7 +67,13 @@ export async function PUT(request: Request) {
     if (
       !isRecord(body) ||
       !isRecord(body.organizations) ||
-      !isMpkMemberLists(body.mpkMembers) ||
+      !isRecord(body.organizationLogos) ||
+      !isMpkMemberLists(body.mpkMembers)
+    ) {
+      return NextResponse.json({ error: "Data pengaturan kandidat tidak valid." }, { status: 400 });
+    }
+
+    if (
       body.mpkMembers.chair.length === 0 ||
       body.mpkMembers.chair.length > 10 ||
       body.mpkMembers.vice.length === 0 ||
@@ -79,8 +86,24 @@ export async function PUT(request: Request) {
     }
 
     const submittedOrganizations = body.organizations;
-    const configurations: CandidateConfigurations = { mpk: [], osis: [], ky: [] };
+    const submittedLogos = body.organizationLogos;
+    const organizationLogos: OrganizationLogos = { mpk: "", osis: "", ky: "" };
     let totalPhotoBytes = 0;
+    for (const organizationId of organizationIds) {
+      const logoDataUrl = submittedLogos[organizationId];
+      if (!isValidPhotoDataUrl(logoDataUrl)) {
+        return NextResponse.json(
+          { error: `Logo ${organizationId.toUpperCase()} tidak valid. Logo harus JPG, PNG, atau WebP (maks. 512 KB).` },
+          { status: 400 },
+        );
+      }
+      organizationLogos[organizationId] = logoDataUrl;
+      if (logoDataUrl) {
+        totalPhotoBytes += Buffer.from(logoDataUrl.slice(logoDataUrl.indexOf(",") + 1), "base64").length;
+      }
+    }
+
+    const configurations: CandidateConfigurations = { mpk: [], osis: [], ky: [] };
 
     for (const organizationId of organizationIds.filter((id) => id !== "mpk")) {
       const submittedCandidates = submittedOrganizations[organizationId];
@@ -133,7 +156,7 @@ export async function PUT(request: Request) {
           totalPhotoBytes += Buffer.from(photoDataUrl.slice(photoDataUrl.indexOf(",") + 1), "base64").length;
           if (totalPhotoBytes > 10 * 1024 * 1024) {
             return NextResponse.json(
-              { error: "Ukuran total seluruh foto calon maksimal 10 MB." },
+              { error: "Ukuran total foto dan logo maksimal 10 MB." },
               { status: 413 },
             );
           }
@@ -190,7 +213,7 @@ export async function PUT(request: Request) {
           totalPhotoBytes += Buffer.from(photoDataUrl.slice(photoDataUrl.indexOf(",") + 1), "base64").length;
           if (totalPhotoBytes > 10 * 1024 * 1024) {
             return NextResponse.json(
-              { error: "Ukuran total seluruh foto calon maksimal 10 MB." },
+              { error: "Ukuran total foto dan logo maksimal 10 MB." },
               { status: 413 },
             );
           }
@@ -345,6 +368,15 @@ export async function PUT(request: Request) {
         }
       }
 
+      const upsertOrganizationLogo = database.prepare(
+        `INSERT INTO organization_logos (organization_id, logo_data_url)
+         VALUES (?, ?)
+         ON CONFLICT(organization_id) DO UPDATE SET logo_data_url = excluded.logo_data_url`,
+      );
+      for (const organizationId of organizationIds) {
+        upsertOrganizationLogo.run(organizationId, organizationLogos[organizationId]);
+      }
+
       const mpkBallotCount = database
         .prepare("SELECT COUNT(*) AS total FROM mpk_ballots")
         .get() as { total: number };
@@ -490,6 +522,7 @@ export async function PUT(request: Request) {
         osis: configurations.osis.length,
         ky: configurations.ky.length,
       },
+      organizationLogos,
     });
   } catch (error) {
     console.error("Gagal menyimpan konfigurasi kandidat:", error);

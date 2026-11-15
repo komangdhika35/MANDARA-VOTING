@@ -170,6 +170,10 @@ export function getDatabase() {
       vision TEXT NOT NULL DEFAULT '',
       mission TEXT NOT NULL DEFAULT ''
     );
+    CREATE TABLE IF NOT EXISTS organization_logos (
+      organization_id TEXT PRIMARY KEY NOT NULL CHECK (organization_id IN ('mpk', 'osis', 'ky')),
+      logo_data_url TEXT NOT NULL DEFAULT ''
+    );
     CREATE TABLE IF NOT EXISTS mpk_member_details (
       member_id TEXT PRIMARY KEY NOT NULL
         REFERENCES mpk_members(member_id) ON DELETE CASCADE,
