@@ -21,7 +21,7 @@ Buka `http://localhost:3000`. Untuk menjalankan versi produksi, gunakan `npm run
 
 Siswa masuk dengan mengisi NIS 4 digit terlebih dahulu, lalu memasukkan password berupa NIS + 1 (contoh: NIS `1343`, password `1344`). Ketik username `admin` pada halaman login untuk menampilkan kolom password admin dan membuka halaman rekap suara. Password admin pada instalasi ini disimpan di file lokal `.env.local` (tidak diunggah ke Git). Halaman admin menampilkan rekap jumlah suara, nama siswa beserta pilihannya, dan daftar siswa yang belum memilih untuk setiap organisasi.
 
-Admin dapat memilih **Reset** di samping pemilih untuk menghapus suara siswa pada organisasi tersebut, atau **Reset semua** untuk menghapus semua pilihannya di MPK, OSIS, dan KY agar siswa dapat memilih ulang dari awal. Untuk MPK, reset satu organisasi menghapus pilihan ketua dan/atau wakil yang sudah tercatat. Tindakan reset harus dikonfirmasi, memperbarui rekap suara, dan mengakhiri sesi login siswa tersebut.
+Admin dapat memilih **Reset** di samping pemilih untuk menghapus suara siswa pada organisasi tersebut, atau **Reset semua** untuk menghapus semua pilihannya di MPK, OSIS, dan KY agar siswa dapat memilih ulang dari awal. Pilihan MPK yang belum lengkap tetap dapat di-reset dari daftar pemilih dengan filter **Belum memilih**. Untuk MPK, reset satu organisasi menghapus pilihan ketua dan/atau wakil yang sudah tercatat. Tindakan reset harus dikonfirmasi, memperbarui rekap suara, dan mengakhiri sesi login siswa tersebut.
 
 Untuk mengimpor daftar dari Excel, jalankan perintah berikut di terminal pada folder proyek (ganti alamat file sesuai lokasi workbook):
 

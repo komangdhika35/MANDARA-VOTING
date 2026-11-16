@@ -198,11 +198,6 @@ function toVoteRecord(organizationIds: OrganizationId[]): VoteRecord {
 export default function Home() {
   const [nis, setNis] = useState("");
   const [password, setPassword] = useState("");
-  const [adminPasswordStep, setAdminPasswordStep] = useState(false);
-  const [studentPasswordStep, setStudentPasswordStep] = useState(false);
-  const [studentName, setStudentName] = useState("");
-  const adminPasswordRef = useRef<HTMLInputElement>(null);
-  const studentPasswordRef = useRef<HTMLInputElement>(null);
   const completionAudioRef = useRef<HTMLAudioElement | null>(null);
   const [voter, setVoter] = useState("");
   const [role, setRole] = useState<"student" | "admin" | null>(null);
@@ -222,11 +217,6 @@ export default function Home() {
   const [appError, setAppError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [ready, setReady] = useState(false);
-
-  useEffect(() => {
-    if (adminPasswordStep) adminPasswordRef.current?.focus();
-    if (studentPasswordStep) studentPasswordRef.current?.focus();
-  }, [adminPasswordStep, studentPasswordStep]);
 
   useEffect(() => {
     let active = true;
@@ -369,48 +359,12 @@ export default function Home() {
       setLoginError("NIS wajib diisi.");
       return;
     }
-    if (adminLogin && !adminPasswordStep) {
-      setAdminPasswordStep(true);
-      setPassword("");
-      setLoginError("");
+    if (!adminLogin && !/^\d{4}$/.test(cleanNis)) {
+      setLoginError("NIS tidak valid.");
       return;
     }
-    if (!adminLogin && !studentPasswordStep) {
-      if (!/^\d{4}$/.test(cleanNis)) {
-        setLoginError("NIS tidak valid.");
-        return;
-      }
-      setLoginError("");
-      setIsSubmitting(true);
-      try {
-        const response = await fetch("/api/auth/login", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ nis: cleanNis, step: "identify" }),
-        });
-        const data = (await response.json()) as {
-          voter?: { name: string };
-          error?: string;
-        };
-        if (!response.ok) throw new Error(data.error ?? "NIS tidak terdaftar.");
-        setStudentName(data.voter?.name ?? "");
-        setStudentPasswordStep(true);
-        setPassword("");
-      } catch (error) {
-        setLoginError(
-          error instanceof Error ? error.message : "Tidak dapat memeriksa NIS. Silakan coba lagi.",
-        );
-      } finally {
-        setIsSubmitting(false);
-      }
-      return;
-    }
-    if (adminLogin && !password) {
-      setLoginError("Password admin wajib diisi.");
-      return;
-    }
-    if (!adminLogin && !password) {
-      setLoginError("Password pemilih wajib diisi.");
+    if (!password) {
+      setLoginError(adminLogin ? "Password admin wajib diisi." : "Password pemilih wajib diisi.");
       return;
     }
     setLoginError("");
@@ -445,9 +399,6 @@ export default function Home() {
       setSelectedCandidate("");
       setNis("");
       setPassword("");
-      setAdminPasswordStep(false);
-      setStudentPasswordStep(false);
-      setStudentName("");
     } catch (error) {
       setLoginError(
         error instanceof Error
@@ -473,7 +424,7 @@ export default function Home() {
     setActiveOrganization("mpk");
     setSelectedMpkPosition("chair");
     setSelectedCandidate("");
-    setAdminPasswordStep(false);
+    setNis("");
     setPassword("");
   }
 
@@ -581,13 +532,9 @@ export default function Home() {
   if (!ready) return <main className="min-h-screen bg-paper" aria-label="Memuat aplikasi" />;
 
   if (!role) {
-    const showAdminPasswordStep =
-      nis.trim().toLocaleLowerCase("en-US") === "admin" && adminPasswordStep;
-    const showStudentPasswordStep =
-      nis.trim().toLocaleLowerCase("en-US") !== "admin" && studentPasswordStep;
-    const showPasswordStep = showAdminPasswordStep || showStudentPasswordStep;
+    const isAdminLogin = nis.trim().toLocaleLowerCase("en-US") === "admin";
     return (
-      <main className="grid min-h-screen place-items-center bg-[radial-gradient(ellipse_at_5%_90%,rgba(226,58,76,.09),transparent_34%),radial-gradient(ellipse_at_96%_8%,rgba(245,196,199,.35),transparent_31%),linear-gradient(135deg,#fff_15%,#fffafa_65%,#fff4f5)] px-6 pt-[38px] pb-[26px] motion-safe:animate-rise-in max-[760px]:px-[18px] max-[760px]:py-6 max-[420px]:px-3">
+      <main className="grid min-h-screen place-items-center bg-[radial-gradient(ellipse_at_5%_90%,rgba(226,58,76,.09),transparent_34%),radial-gradient(ellipse_at_96%_8%,rgba(245,196,199,.35),transparent_31%),linear-gradient(135deg,#fff_15%,#fffafa_65%,#fff4f5)] px-6 pt-6 pb-5 motion-safe:animate-rise-in max-[760px]:px-[18px] max-[760px]:py-2 max-[420px]:px-3 [@media(max-height:700px)]:[padding-top:12px] [@media(max-height:700px)]:[padding-bottom:12px]">
         <div className="w-[min(1054px,100%)]">
           <a className="brand [display:inline-flex] [align-items:center] [gap:10px]" href="#" aria-label="Suara Mandara">
             <Image
@@ -604,8 +551,8 @@ export default function Home() {
             </span>
           </a>
 
-          <section className="grid min-h-[610px] grid-cols-[1.04fr_.96fr] overflow-hidden rounded-[17px] border border-[rgba(218,74,91,.1)] bg-white shadow-[0_24px_72px_rgba(109,41,47,.09),0_2px_8px_rgba(109,41,47,.035)] max-[760px]:mx-auto max-[760px]:max-w-[490px] max-[760px]:grid-cols-1">
-            <div className="login-visual motion-safe:animate-rise-in [position:relative] [overflow:hidden] [display:flex] [flex-direction:column] [padding:38px_42px] [color:#492b30] [background:radial-gradient(ellipse_at_82%_72%,_rgba(216,_73,_91,_.12),_transparent_38%),_linear-gradient(145deg,_#fff_10%,_#fffafa_65%,_#fff2f3)] [&::before]:[content:''] [&::before]:[position:absolute] [&::before]:[width:290px] [&::before]:[height:290px] [&::before]:[border-radius:50%] [&::before]:[left:auto] [&::before]:[bottom:-182px] [&::before]:[background:rgba(209,_54,_72,_.07)] [&::after]:[content:''] [&::after]:[position:absolute] [&::after]:[width:145px] [&::after]:[height:145px] [&::after]:[border-radius:50%] [&::after]:[right:38px] [&::after]:[top:150px] [&::after]:[background:rgba(237,_177,_182,_.15)] [&_>_.eyebrow]:[z-index:1] [&_>_.eyebrow]:[display:flex] [&_>_.eyebrow]:[align-items:center] [&_>_.eyebrow]:[gap:9px] [&_>_.eyebrow]:[color:#97666c] max-[760px]:[min-height:410px] max-[760px]:[padding:26px_28px] [&_.live-dot]:[background:#d84c5c] [&_.live-dot]:[box-shadow:0_0_0_3px_rgba(216,_76,_92,_.13)] [&::before]:[right:-118px]" style={{ animationDelay: "90ms" }}>
+          <section className="grid min-h-[570px] grid-cols-[1.04fr_.96fr] overflow-hidden rounded-[17px] border border-[rgba(218,74,91,.1)] bg-white shadow-[0_24px_72px_rgba(109,41,47,.09),0_2px_8px_rgba(109,41,47,.035)] max-[760px]:mx-auto max-[760px]:max-w-[490px] max-[760px]:min-h-0 max-[760px]:grid-cols-1 [@media(max-height:700px)_and_(min-width:761px)]:[min-height:500px]">
+            <div className="login-visual motion-safe:animate-rise-in [position:relative] [overflow:hidden] [display:flex] [flex-direction:column] [padding:38px_42px] [color:#492b30] [background:radial-gradient(ellipse_at_82%_72%,_rgba(216,_73,_91,_.12),_transparent_38%),_linear-gradient(145deg,_#fff_10%,_#fffafa_65%,_#fff2f3)] [&::before]:[content:''] [&::before]:[position:absolute] [&::before]:[width:290px] [&::before]:[height:290px] [&::before]:[border-radius:50%] [&::before]:[left:auto] [&::before]:[bottom:-182px] [&::before]:[background:rgba(209,_54,_72,_.07)] [&::after]:[content:''] [&::after]:[position:absolute] [&::after]:[width:145px] [&::after]:[height:145px] [&::after]:[border-radius:50%] [&::after]:[right:38px] [&::after]:[top:150px] [&::after]:[background:rgba(237,_177,_182,_.15)] [&_>_.eyebrow]:[z-index:1] [&_>_.eyebrow]:[display:flex] [&_>_.eyebrow]:[align-items:center] [&_>_.eyebrow]:[gap:9px] [&_>_.eyebrow]:[color:#97666c] max-[760px]:[display:none] [&_.live-dot]:[background:#d84c5c] [&_.live-dot]:[box-shadow:0_0_0_3px_rgba(216,_76,_92,_.13)] [&::before]:[right:-118px]" style={{ animationDelay: "90ms" }}>
               <span className="eyebrow [font-size:9px] [font-weight:700] [letter-spacing:1.15px]"><span className="live-dot [width:7px] [height:7px] [display:inline-block] [flex:0_0_auto] [border-radius:50%] [background:#cbe67c] [box-shadow:0_0_0_3px_rgba(203,_230,_124,_.13)]" /> PEMILIHAN KETUA DAN WAKIL ORGANISASI KESISWAAN SMKN BALI MANDARA MASA BAKTI 2026/2027</span>
               <div className="visual-heading [z-index:1] [margin-top:40px] [&_h1]:[margin:0] [&_h1]:[color:#38252a] [&_h1]:[font:900_clamp(43px,_5vw,_59px)/1.04_'Nunito',_'DM_Sans',_sans-serif] [&_h1]:[letter-spacing:-1.8px] [&_h1_span]:[color:#c93246] [&_p]:[max-width:315px] [&_p]:[margin:20px_0_0] [&_p]:[color:#806b6c] [&_p]:[font-size:12px] [&_p]:[line-height:1.8] max-[760px]:[margin-top:24px] max-[760px]:[&_h1]:[font-size:45px] max-[760px]:[&_p]:[max-width:255px] max-[760px]:[&_p]:[margin-top:11px] max-[760px]:[&_p]:[font-size:10px] max-[420px]:[&_h1]:[font-size:40px]">
                 <h1>AYO PILIH<br />SESUAI ISI<br /><span>HATIMU</span></h1>
@@ -622,131 +569,79 @@ export default function Home() {
               </div>
             </div>
 
-            <div className="login-form-panel motion-safe:animate-content-in [position:relative] [display:flex] [flex-direction:column] [padding:37px_46px_25px] max-[760px]:[min-height:448px] max-[760px]:[padding:28px] max-[420px]:[padding-right:21px] max-[420px]:[padding-left:21px] [&_.primary-button]:[background:#c93246] [&_.primary-button:hover:not(:disabled)]:[background:#ad293b] [&_.primary-button:focus-visible]:[outline-color:#e7a0a7]" style={{ animationDelay: "180ms" }}>
+            <div className="login-form-panel motion-safe:animate-content-in [position:relative] [display:flex] [flex-direction:column] [padding:32px_42px_22px] max-[760px]:[padding:20px] max-[420px]:[padding-right:16px] max-[420px]:[padding-left:16px] [@media(max-height:700px)]:[padding-top:20px] [@media(max-height:700px)]:[padding-bottom:14px] [&_.primary-button]:[background:#c93246] [&_.primary-button:hover:not(:disabled)]:[background:#ad293b] [&_.primary-button:focus-visible]:[outline-color:#e7a0a7]" style={{ animationDelay: "180ms" }}>
               <div className="form-topline [display:flex] [justify-content:space-between] [align-items:center] [color:#9a8587] [font-size:8px] [font-weight:700] [letter-spacing:1px]">
-                <span>{showAdminPasswordStep ? "PORTAL ADMIN" : "PORTAL PEMILIH"}</span>
+                <span>{isAdminLogin ? "PORTAL ADMIN" : "PORTAL PEMILIH"}</span>
                 <span className="secure-label [color:#97565f] [&_span]:[color:#cb5260]"><span>✦</span> SUARA MANDARA</span>
               </div>
-              <div className="form-heading [position:relative] [margin-top:58px] [&_>_p]:[margin:16px_0_6px] [&_>_p]:[color:#927d7e] [&_>_p]:[font-size:12px] [&_h2]:[margin:0] [&_h2]:[color:#37282b] [&_h2]:[font:700_29px/1.16_'Manrope',_sans-serif] [&_h2]:[letter-spacing:-1.2px] max-[760px]:[margin-top:35px] max-[760px]:[&_h2]:[font-size:27px] [&_h2]:[font-family:'Nunito',_'DM_Sans',_sans-serif] [&_h2]:[font-weight:800]">
-                <span className="form-icon [width:25px] [height:25px] [border-radius:8px] [display:grid] [place-items:center] [color:#b63d4d] [background:#fff0f1] [font-size:16px]">{showPasswordStep ? "▣" : "↗"}</span>
-                <p>{showAdminPasswordStep ? "Selamat datang, admin!" : "Selamat datang, pemilih!"}</p>
-                <h2>
-                  {showAdminPasswordStep ? <>Masukkan password<br />admin.</> : showStudentPasswordStep ? <>Masukkan password<br />pemilih.</> : <>Mulai dari<br />suaramu.</>}
-                </h2>
+              <div className="form-heading [position:relative] [margin-top:36px] [&_>_p]:[margin:13px_0_6px] [&_>_p]:[color:#927d7e] [&_>_p]:[font-size:12px] [&_h2]:[margin:0] [&_h2]:[color:#37282b] [&_h2]:[font:700_29px/1.16_'Manrope',_sans-serif] [&_h2]:[letter-spacing:-1.2px] max-[760px]:[margin-top:18px] [@media(max-height:700px)]:[margin-top:24px] max-[760px]:[&_h2]:[font-size:27px] [&_h2]:[font-family:'Nunito',_'DM_Sans',_sans-serif] [&_h2]:[font-weight:800]">
+                <span className="form-icon [width:25px] [height:25px] [border-radius:8px] [display:grid] [place-items:center] [color:#b63d4d] [background:#fff0f1] [font-size:16px]">↗</span>
+                <p>{isAdminLogin ? "Selamat datang, admin!" : "Selamat datang, pemilih!"}</p>
+                <h2>{isAdminLogin ? "Masuk ke portal admin." : "Mulai dari suaramu."}</h2>
                 <span className="form-subtitle [display:block] [margin-top:10px] [color:#897a7b] [font-size:11px] [line-height:1.6]">
-                  {showAdminPasswordStep
-                    ? "Masukkan password untuk membuka rekap suara."
-                    : showStudentPasswordStep
-                      ? "Masukkan password untuk melanjutkan pemilihan."
-                    : "Masukkan NIS untuk melanjutkan pemilihan."}
+                  {isAdminLogin
+                    ? "Masukkan username dan password untuk membuka rekap suara."
+                    : "Masukkan NIS dan password untuk melanjutkan pemilihan."}
                 </span>
               </div>
-              <form className="login-form [display:flex] [flex-direction:column] [margin-top:24px] [&_label]:[margin:0_0_8px] [&_label]:[color:#5a4548] [&_label]:[font-size:10px] [&_label]:[font-weight:700]" onSubmit={handleLogin}>
-                {showPasswordStep ? (
-                  <>
-                    {showAdminPasswordStep ? (
-                      <div className="admin-account motion-safe:animate-content-in [display:flex] [align-items:center] [gap:10px] [margin:0_0_18px] [padding:10px] [border:1px_solid_#f0e2e0] [border-radius:8px] [background:#fffafa] [&_>_span:nth-child(2)]:[min-width:0] [&_>_span:nth-child(2)]:[flex:1] [&_strong]:[display:block] [&_small]:[display:block] [&_strong]:[color:#57383a] [&_strong]:[font-size:10px] [&_small]:[margin-top:3px] [&_small]:[color:#9c8583] [&_small]:[font-size:8px]">
-                        <span className="admin-account-avatar [width:31px] [height:31px] [border-radius:50%] [display:grid] [flex:0_0_auto] [place-items:center] [color:#fff8e6] [background:linear-gradient(145deg,_#8f282e,_#c44a46)] [font-size:12px] [font-weight:700]">A</span>
-                        <span><strong>admin</strong><small>Masuk sebagai pengelola</small></span>
-                        <button
-                          type="button"
-                          className="change-admin-button [padding:6px_8px] [border:0] [border-radius:5px] [color:#a13740] [background:#f9e9e9] [font-size:8px] [font-weight:700] [cursor:pointer] [&:hover]:[background:#f3d9db]"
-                          onClick={() => {
-                            setAdminPasswordStep(false);
-                            setPassword("");
-                            setLoginError("");
-                          }}
-                        >
-                          Kembali
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="admin-account [display:flex] [align-items:center] [gap:10px] [margin:0_0_18px] [padding:10px] [border:1px_solid_#f0e2e0] [border-radius:8px] [background:#fffafa]">
-                        <span className="admin-account-avatar [width:31px] [height:31px] [border-radius:50%] [display:grid] [flex:0_0_auto] [place-items:center] [color:#fff8e6] [background:linear-gradient(145deg,_#8f282e,_#c44a46)] [font-size:12px] [font-weight:700]">{studentName.trim().charAt(0).toUpperCase()}</span>
-                        <span className="[min-width:0] [flex:1]"><strong className="[display:block] [color:#57383a] [font-size:10px]">{studentName}</strong><small className="[display:block] [margin-top:3px] [color:#9c8583] [font-size:8px]">Masuk sebagai pemilih</small></span>
-                        <button
-                          type="button"
-                          className="change-admin-button [padding:6px_8px] [border:0] [border-radius:5px] [color:#a13740] [background:#f9e9e9] [font-size:8px] [font-weight:700] [cursor:pointer] [&:hover]:[background:#f3d9db]"
-                          onClick={() => {
-                            setStudentPasswordStep(false);
-                            setPassword("");
-                            setLoginError("");
-                          }}
-                        >
-                          Kembali
-                        </button>
-                      </div>
-                    )}
-                    <label htmlFor={showAdminPasswordStep ? "admin-password" : "student-password"}>
-                      {showAdminPasswordStep ? "Password admin" : "Password pemilih"}
-                    </label>
-                    <div className="input-wrap [height:43px] [display:flex] [align-items:center] [gap:10px] [margin-bottom:8px] [padding:0_12px] [border:1px_solid_#e8ebe4] [border-radius:7px] [background:#fffdfd] [transition:border-color_.2s,_box-shadow_.2s,_transform_.2s] [&:focus-within]:[border-color:#db7a84] [&:focus-within]:[box-shadow:0_0_0_3px_rgba(219,_122,_132,_.13)] [&_input]:[width:100%] [&_input]:[padding:0] [&_input]:[border:0] [&_input]:[outline:0] [&_input]:[color:#453337] [&_input]:[background:transparent] [&_input]:[font-size:10px] [&_input::placeholder]:[color:#b7a9aa] [border-color:#eee5e5]">
-                      <span className="input-icon lock-icon [color:#a37d80] [font-size:13px]" aria-hidden="true">▣</span>
-                      <input
-                        ref={showAdminPasswordStep ? adminPasswordRef : studentPasswordRef}
-                        id={showAdminPasswordStep ? "admin-password" : "student-password"}
-                        name="password"
-                        type="password"
-                        inputMode={showStudentPasswordStep ? "numeric" : undefined}
-                        autoComplete="current-password"
-                        placeholder={showAdminPasswordStep ? "Masukkan password admin" : "Masukkan password"}
-                        value={password}
-                        onChange={(event) => setPassword(event.target.value)}
-                        maxLength={showStudentPasswordStep ? 5 : undefined}
-                        required
-                      />
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <label htmlFor="nis">Nomor Induk Siswa (NIS)</label>
-                    <div className="input-wrap [height:43px] [display:flex] [align-items:center] [gap:10px] [margin-bottom:16px] [padding:0_12px] [border:1px_solid_#e8ebe4] [border-radius:7px] [background:#fffdfd] [transition:border-color_.2s,_box-shadow_.2s,_transform_.2s] [&:focus-within]:[border-color:#db7a84] [&:focus-within]:[box-shadow:0_0_0_3px_rgba(219,_122,_132,_.13)] [&:focus-within_.input-icon]:[color:#63814d] [&:focus-within_.input-icon]:[transform:scale(1.08)] [&_input]:[width:100%] [&_input]:[padding:0] [&_input]:[border:0] [&_input]:[outline:0] [&_input]:[color:#453337] [&_input]:[background:transparent] [&_input]:[font-size:10px] [&_input::placeholder]:[color:#b7a9aa] [border-color:#eee5e5]">
-                      <span className="input-icon nis-icon [color:#a37d80] [font-size:15px]" aria-hidden="true">#</span>
-                      <input
-                        id="nis"
-                        name="nis"
-                        type="text"
-                        inputMode="text"
-                        autoCapitalize="none"
-                        autoComplete="off"
-                        placeholder="Masukkan NIS kamu"
-                        value={nis}
-                        maxLength={5}
-                        onChange={(event) => {
-                          setNis(event.target.value);
-                          setAdminPasswordStep(false);
-                          setStudentPasswordStep(false);
-                          setStudentName("");
-                          setLoginError("");
-                          setPassword("");
-                        }}
-                        required
-                      />
-                    </div>
-                  </>
-                )}
+              <form className="login-form [display:flex] [flex-direction:column] [margin-top:18px] [&_label]:[margin:0_0_7px] [&_label]:[color:#5a4548] [&_label]:[font-size:10px] [&_label]:[font-weight:700] max-[760px]:[margin-top:12px] [@media(max-height:700px)]:[margin-top:12px]" onSubmit={handleLogin}>
+                <label htmlFor="nis">{isAdminLogin ? "Username" : "Nomor Induk Siswa (NIS)"}</label>
+                <div className="input-wrap [height:43px] [display:flex] [align-items:center] [gap:10px] [margin-bottom:12px] [padding:0_12px] [border:1px_solid_#e8ebe4] [border-radius:7px] [background:#fffdfd] [transition:border-color_.2s,_box-shadow_.2s,_transform_.2s] [&:focus-within]:[border-color:#db7a84] [&:focus-within]:[box-shadow:0_0_0_3px_rgba(219,_122,_132,_.13)] [&:focus-within_.input-icon]:[color:#63814d] [&:focus-within_.input-icon]:[transform:scale(1.08)] [&_input]:[width:100%] [&_input]:[padding:0] [&_input]:[border:0] [&_input]:[outline:0] [&_input]:[color:#453337] [&_input]:[background:transparent] [&_input]:[font-size:10px] [&_input::placeholder]:[color:#b7a9aa] [border-color:#eee5e5]">
+                  <span className="input-icon nis-icon [color:#a37d80] [font-size:15px]" aria-hidden="true">#</span>
+                  <input
+                    id="nis"
+                    name="nis"
+                    type="text"
+                    inputMode={isAdminLogin ? "text" : "numeric"}
+                    autoCapitalize="none"
+                    autoComplete="username"
+                    placeholder={isAdminLogin ? "Masukkan admin" : "Masukkan NIS kamu"}
+                    value={nis}
+                    maxLength={5}
+                    onChange={(event) => {
+                      setNis(event.target.value);
+                      setLoginError("");
+                      setPassword("");
+                    }}
+                    required
+                  />
+                </div>
+                <label htmlFor="password">{isAdminLogin ? "Password admin" : "Password pemilih"}</label>
+                <div className="input-wrap [height:43px] [display:flex] [align-items:center] [gap:10px] [margin-bottom:16px] [padding:0_12px] [border:1px_solid_#e8ebe4] [border-radius:7px] [background:#fffdfd] [transition:border-color_.2s,_box-shadow_.2s,_transform_.2s] [&:focus-within]:[border-color:#db7a84] [&:focus-within]:[box-shadow:0_0_0_3px_rgba(219,_122,_132,_.13)] [&_input]:[width:100%] [&_input]:[padding:0] [&_input]:[border:0] [&_input]:[outline:0] [&_input]:[color:#453337] [&_input]:[background:transparent] [&_input]:[font-size:10px] [&_input::placeholder]:[color:#b7a9aa] [border-color:#eee5e5]">
+                  <span className="input-icon lock-icon [color:#a37d80] [font-size:13px]" aria-hidden="true">▣</span>
+                  <input
+                    id="password"
+                    name="password"
+                    type="password"
+                    inputMode={isAdminLogin ? undefined : "numeric"}
+                    autoComplete="current-password"
+                    placeholder={isAdminLogin ? "Masukkan password admin" : "Masukkan password"}
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
+                    maxLength={32}
+                    required
+                  />
+                </div>
                 {loginError && <p className="form-error [margin:-7px_0_10px] [color:#b6473d] [font-size:10px]" role="alert">{loginError}</p>}
                 {appError && <p className="form-error [margin:-7px_0_10px] [color:#b6473d] [font-size:10px]" role="alert">{appError}</p>}
                 <button className="primary-button login-button [height:44px] [border:0] [border-radius:7px] [display:inline-flex] [align-items:center] [justify-content:center] [gap:14px] [color:#f9faef] [background:#17483b] [font-size:10px] [font-weight:700] [cursor:pointer] [transition:background_.2s,_transform_.2s,_box-shadow_.2s,_opacity_.2s] [&:hover:not(:disabled)]:[background:#225d4b] [&:hover:not(:disabled)]:[transform:translateY(-1px)] [&:active:not(:disabled)]:[transform:translateY(0)_scale(.98)] [&:disabled]:[cursor:wait] [&:focus-visible]:[outline:3px_solid_#b5cd79] [&:focus-visible]:[outline-offset:3px] [&_span]:[font-size:15px] [&_span]:[font-weight:400]" type="submit" disabled={isSubmitting}>
                   {isSubmitting
                     ? "Memeriksa data..."
-                    : showPasswordStep
-                      ? showAdminPasswordStep
+                    : isAdminLogin
                       ? "Masuk ke halaman admin"
-                      : "Masuk & mulai memilih"
-                      : "Lanjut ke password"} {isSubmitting ? (
+                      : "Lanjut memilih"} {isSubmitting ? (
                     <span className="button-spinner motion-safe:animate-spin [width:13px] [height:13px] [flex:0_0_auto] [border:2px_solid_rgba(255,255,255,.4)] [border-top-color:currentColor] [border-radius:50%]" aria-hidden="true" />
                   ) : (
                     <span aria-hidden="true">→</span>
                   )}
                 </button>
               </form>
-              <p className="login-hint [display:flex] [gap:8px] [margin:15px_0_0] [color:#8d7e7f] [font-size:9px] [line-height:1.5] [&_span]:[color:#cf5261]"><span>✳</span> Gunakan hak pilihmu dengan bijak untuk menentukan pemimpin organisasi kesiswaan.</p>
-              <p className="demo-notice [margin:8px_0_0_16px] [color:#a18e8f] [font-size:8px]">Setiap suara berharga. Pilih calon yang paling mewakili aspirasi siswa.</p>
-              <div className="login-footer [margin-top:auto] [padding-top:25px] [border-top:1px_solid_#f0f1ec] [display:flex] [justify-content:space-between] [color:#a28f90] [font-size:8px] [border-color:#f1e9e9]"><span>© 2026 Suara Mandara</span><span>Suaramu berarti <span className="heart [color:#d48072]">♥</span></span></div>
+              <p className="login-hint [display:flex] [gap:8px] [margin:15px_0_0] [color:#8d7e7f] [font-size:9px] [line-height:1.5] [&_span]:[color:#cf5261] max-[760px]:[display:none] [@media(max-height:700px)]:[display:none]"><span>✳</span> Gunakan hak pilihmu dengan bijak untuk menentukan pemimpin organisasi kesiswaan.</p>
+              <p className="demo-notice [margin:8px_0_0_16px] [color:#a18e8f] [font-size:8px] max-[760px]:[display:none] [@media(max-height:700px)]:[display:none]">Setiap suara berharga. Pilih calon yang paling mewakili aspirasi siswa.</p>
+              <div className="login-footer [margin-top:auto] [padding-top:20px] [border-top:1px_solid_#f0f1ec] [display:flex] [justify-content:space-between] [color:#a28f90] [font-size:8px] [gap:10px] max-[420px]:[font-size:7px] [border-color:#f1e9e9] max-[760px]:[margin-top:12px] max-[760px]:[padding-top:10px] [@media(max-height:700px)]:[padding-top:12px]"><span>© 2026 Suara Mandara</span><span className="login-footer-credit">Dikembangkan oleh Dhika Sumarta dan Dean Putra</span></div>
             </div>
           </section>
-          <div className="login-bottom-note [display:flex] [flex-direction:column] [align-items:center] [justify-content:center] [gap:5px] [margin-top:17px] [color:#9c8284] [font-size:8px] [font-weight:600] [letter-spacing:1px]"><span><span className="tiny-spark [color:#cf5261]">✳</span> SATU SISWA, SATU SUARA, SUARA MANDARA.</span><span className="[color:#8e7779] [font-size:9px] [font-weight:500] [letter-spacing:.2px]">Dikembangkan oleh Dhika Sumarta dan Dean Putra</span></div>
+          <div className="login-bottom-note [display:flex] [flex-direction:column] [align-items:center] [justify-content:center] [gap:5px] [margin-top:10px] [color:#9c8284] [font-size:8px] [font-weight:600] [letter-spacing:1px] max-[760px]:[display:none] [@media(max-height:700px)]:[display:none]"><span><span className="tiny-spark [color:#cf5261]">✳</span> SATU SISWA, SATU SUARA, SUARA MANDARA.</span><span className="[color:#8e7779] [font-size:9px] [font-weight:500] [letter-spacing:.2px]">Dikembangkan oleh Dhika Sumarta dan Dean Putra</span></div>
         </div>
       </main>
     );
@@ -781,7 +676,7 @@ export default function Home() {
         </button>
       </header>
 
-      <div className={`app-content ${isMpkPoster || isPairPoster || isElectionCompletedScreen ? "mpk-poster-content [padding-bottom:125px] max-[760px]:[width:calc(100%_-_36px)] max-[760px]:[padding-bottom:116px] max-[420px]:[padding-bottom:85px]" : ""}`}>
+      <div className={`app-content ${isMpkPoster || isPairPoster || isElectionCompletedScreen ? "mpk-poster-content [padding-bottom:125px] max-[760px]:[width:calc(100%_-_36px)] max-[760px]:[padding-bottom:116px] max-[420px]:[padding-bottom:85px]" : ""} ${isPairPoster ? "pair-poster-content [display:flex] [flex-direction:column] [height:calc(100dvh-70px-83px)] [overflow:hidden] [padding-bottom:0] max-[760px]:[height:calc(100dvh-62px-108px)]" : ""}`}>
         {isMpkPoster ? (
           <section className="mpk-poster-page [padding:42px_0_34px] max-[760px]:[padding-top:24px] min-[1000px]:[padding:10px_0_8px]" aria-labelledby="mpk-poster-title">
             <header className="mpk-poster-heading motion-safe:animate-content-in [position:relative] [margin-bottom:24px] [padding:29px_32px] [border:1px_solid_#f1dfdf] [border-radius:14px] [background:radial-gradient(ellipse_at_92%_10%,_rgba(201,_50,_70,_.1),_transparent_34%),_linear-gradient(120deg,_#fff_20%,_#fff8f8)] [&_.eyebrow]:[color:#a76b70] [&_.live-dot]:[background:#c93246] [&_.live-dot]:[box-shadow:0_0_0_3px_rgba(201,_50,_70,_.12)] [&_h1]:[margin:11px_0_6px] [&_h1]:[color:#37282b] [&_h1]:[font:800_clamp(27px,_4vw,_39px)/1.1_'Nunito',_'DM_Sans',_sans-serif] [&_h1]:[letter-spacing:-1.3px] [&_>_p]:[margin:0] [&_>_p]:[color:#897a7b] [&_>_p]:[font-size:11px] max-[760px]:[padding:23px_20px] max-[760px]:[&_h1]:[max-width:70%] max-[420px]:[padding:20px_14px] max-[420px]:[&_h1]:[max-width:100%] max-[420px]:[&_h1]:[padding-right:0] max-[420px]:[&_h1]:[font-size:27px] min-[1000px]:[flex:0_0_auto] min-[1000px]:[margin-bottom:10px] min-[1000px]:[padding:12px_18px] min-[1000px]:[border-radius:10px] min-[1000px]:[&_h1]:[margin:5px_0_3px] min-[1000px]:[&_h1]:[font-size:23px] min-[1000px]:[&_>_p]:[font-size:9px] min-[1000px]:[&_.mpk-poster-notice]:[display:none] min-[1000px]:[&_.mpk-poster-count]:[top:15px] min-[1000px]:[&_.mpk-poster-count]:[right:18px]">
@@ -909,8 +804,8 @@ export default function Home() {
             </div>
           </section>
         ) : isPairPoster ? (
-          <section className="mpk-poster-page pair-poster-page [padding:42px_0_34px] max-[760px]:[padding-top:24px] [max-width:920px] [margin:0_auto]" aria-labelledby="pair-poster-title">
-            <header className="mpk-poster-heading motion-safe:animate-content-in [position:relative] [margin-bottom:24px] [padding:29px_32px] [border:1px_solid_#f1dfdf] [border-radius:14px] [background:radial-gradient(ellipse_at_92%_10%,_rgba(201,_50,_70,_.1),_transparent_34%),_linear-gradient(120deg,_#fff_20%,_#fff8f8)] [&_.eyebrow]:[color:#a76b70] [&_.live-dot]:[background:#c93246] [&_.live-dot]:[box-shadow:0_0_0_3px_rgba(201,_50,_70,_.12)] [&_h1]:[margin:11px_0_6px] [&_h1]:[color:#37282b] [&_h1]:[font:800_clamp(27px,_4vw,_39px)/1.1_'Nunito',_'DM_Sans',_sans-serif] [&_h1]:[letter-spacing:-1.3px] [&_>_p]:[margin:0] [&_>_p]:[color:#897a7b] [&_>_p]:[font-size:11px] max-[760px]:[padding:23px_20px] max-[760px]:[&_h1]:[max-width:70%] max-[420px]:[padding:20px_14px] max-[420px]:[&_h1]:[max-width:100%] max-[420px]:[&_h1]:[padding-right:0] max-[420px]:[&_h1]:[font-size:27px]">
+          <section className="mpk-poster-page pair-poster-page [display:flex] [width:100%] [flex:1] [min-height:0] [flex-direction:column] [justify-content:center] [overflow:hidden] [padding:12px_0_8px] max-[760px]:[padding:0_0_6px] [max-width:920px] [margin:0_auto]" aria-labelledby="pair-poster-title">
+            <header className="mpk-poster-heading motion-safe:animate-content-in [position:relative] [margin-bottom:24px] [padding:29px_32px] [border:1px_solid_#f1dfdf] [border-radius:14px] [background:radial-gradient(ellipse_at_92%_10%,_rgba(201,_50,_70,_.1),_transparent_34%),_linear-gradient(120deg,_#fff_20%,_#fff8f8)] [&_.eyebrow]:[color:#a76b70] [&_.live-dot]:[background:#c93246] [&_.live-dot]:[box-shadow:0_0_0_3px_rgba(201,_50,_70,_.12)] [&_h1]:[margin:11px_0_6px] [&_h1]:[color:#37282b] [&_h1]:[font:800_clamp(27px,_4vw,_39px)/1.1_'Nunito',_'DM_Sans',_sans-serif] [&_h1]:[letter-spacing:-1.3px] [&_>_p]:[margin:0] [&_>_p]:[color:#897a7b] [&_>_p]:[font-size:11px] max-[760px]:[margin-bottom:8px] max-[760px]:[padding:10px_12px] max-[760px]:[&_h1]:[max-width:100%] max-[760px]:[&_h1]:[margin:3px_0_2px] max-[760px]:[&_h1]:[font-size:19px] max-[760px]:[&_>_p]:[font-size:8.5px] max-[760px]:[&_>_p]:[line-height:1.4] max-[420px]:[padding:8px_10px] max-[420px]:[&_h1]:[font-size:17px] max-[760px]:[&_.mpk-poster-notice]:[display:none] max-[760px]:[&_.mpk-poster-count]:[top:16px] max-[760px]:[&_.mpk-poster-count]:[right:12px] max-[760px]:[&_.mpk-poster-count]:[padding:5px_8px] max-[760px]:[&_.mpk-poster-count]:[font-size:7px] max-[420px]:[&_.mpk-poster-count]:[position:static] max-[420px]:[&_.mpk-poster-count]:[display:inline-block] max-[420px]:[&_.mpk-poster-count]:[margin-top:5px] min-[760px]:[margin-bottom:10px] min-[760px]:[padding:12px_18px] min-[760px]:[&_h1]:[margin:4px_0_2px] min-[760px]:[&_h1]:[font-size:22px] [@media(max-height:700px)]:[padding:8px_14px] [@media(max-height:700px)]:[margin-bottom:7px] [@media(max-height:700px)]:[&_img]:[display:none] [@media(max-height:700px)]:[&_h1]:[margin:1px_0_0] [@media(max-height:700px)]:[&_h1]:[font-size:17px] [@media(max-height:700px)]:[&_>_p]:[display:none] [@media(max-height:700px)]:[&_.mpk-poster-count]:[top:10px] [@media(max-height:700px)]:[&_.mpk-poster-count]:[right:12px] min-[760px]:[&_>_p]:[font-size:9px] min-[760px]:[&_.mpk-poster-notice]:[display:none]">
               {currentOrganization.logoDataUrl && (
                 <Image
                   src={currentOrganization.logoDataUrl}
@@ -930,14 +825,14 @@ export default function Home() {
               <span className="mpk-poster-count [position:absolute] [top:31px] [right:32px] [padding:8px_11px] [border:1px_solid_#f0d7d9] [border-radius:20px] [color:#a93646] [background:#fff] [font-size:9px] [font-weight:700] max-[760px]:[top:25px] max-[760px]:[right:18px] max-[760px]:[font-size:8px] max-[420px]:[position:static] max-[420px]:[display:inline-block] max-[420px]:[margin-top:11px]">{pairPosterCandidates.length} paslon</span>
             </header>
             {appError && <p className="form-error app-error [margin:-7px_0_10px] [color:#b6473d] [font-size:10px] [width:fit-content] [margin:14px_0_0] [padding:9px_12px] [border:1px_solid_#f0d7d9] [border-radius:6px] [background:#fff7f7]" role="alert">{appError}</p>}
-            <div className="pair-poster-grid [display:grid] [grid-template-columns:repeat(2,_minmax(0,_1fr))] [gap:18px] max-[420px]:[grid-template-columns:1fr] max-[420px]:[gap:12px]">
+            <div className="pair-poster-grid [display:grid] [grid-template-columns:repeat(2,_minmax(0,_1fr))] [gap:18px] max-[420px]:[gap:8px] [flex:1] [min-height:0] [align-items:stretch] min-[760px]:[gap:12px]">
               {pairPosterCandidates.map((candidate, index) => {
                 const isSelected = candidate.id === selectedCandidate;
                 const vision = candidate.vision?.trim() || "";
                 const mission = candidate.mission?.trim() || "";
                 return (
                   <button
-                    className={`pair-poster-card motion-safe:animate-poster-in transition-[transform,border-color,box-shadow] duration-300 motion-reduce:animate-none motion-reduce:transform-none  [display:flex] [min-width:0] [overflow:hidden] [flex-direction:column] [padding:0] [border:1px_solid_#e9ebe4] [border-radius:12px] [background:#fff] [text-align:left] [box-shadow:0_5px_16px_rgba(32,_54,_43,_.04)] [transition:transform_.18s,_border-color_.18s,_box-shadow_.18s] [cursor:pointer] [&:hover]:[transform:translateY(-3px)] [&:hover]:[border-color:#d7a1a7] [&:hover]:[box-shadow:0_10px_22px_rgba(115,_49,_56,_.09)] [&.selected]:[border-color:#bd3548] [&.selected]:[box-shadow:0_0_0_2px_rgba(189,_53,_72,_.12)] [&_.mpk-poster-select]:[margin:auto_16px_15px] [&.selected_.mpk-poster-select]:[border-color:#bd3548] [&.selected_.mpk-poster-select]:[color:#fff] [&.selected_.mpk-poster-select]:[background:#bd3548]${isSelected ? "selected" : ""}`}
+                    className={`pair-poster-card motion-safe:animate-poster-in transition-[transform,border-color,box-shadow] duration-300 motion-reduce:animate-none motion-reduce:transform-none  [display:flex] [min-width:0] [overflow:hidden] [flex-direction:column] [padding:0] [border:1px_solid_#e9ebe4] [border-radius:12px] [background:#fff] [text-align:left] [box-shadow:0_5px_16px_rgba(32,_54,_43,_.04)] [transition:transform_.18s,_border-color_.18s,_box-shadow_.18s] [cursor:pointer] [&:hover]:[transform:translateY(-3px)] [&:hover]:[border-color:#d7a1a7] [&:hover]:[box-shadow:0_10px_22px_rgba(115,_49,_56,_.09)] [&.selected]:[border-color:#bd3548] [&.selected]:[box-shadow:0_0_0_2px_rgba(189,_53,_72,_.12)] [&_.mpk-poster-select]:[margin:auto_16px_15px] [&.selected_.mpk-poster-select]:[border-color:#bd3548] [&.selected_.mpk-poster-select]:[color:#fff] [&.selected_.mpk-poster-select]:[background:#bd3548]${isSelected ? "selected" : ""} [min-height:0] [&_.mpk-poster-select]:[margin:6px_10px_8px] [&_.mpk-poster-select]:[padding:6px_4px] max-[760px]:[&_.mpk-poster-select]:[margin:5px_6px_6px] max-[760px]:[&_.mpk-poster-select]:[padding:5px_2px] max-[760px]:[&_.mpk-poster-select]:[font-size:7px] max-[760px]:[&_.mpk-poster-select]:[min-height:24px]`}
                     key={candidate.id}
                     style={{ animationDelay: `${index * 100}ms` }}
                     type="button"
@@ -945,11 +840,11 @@ export default function Home() {
                     onClick={() => setSelectedCandidate(candidate.id)}
                     aria-pressed={isSelected}
                   >
-                    <span className="mpk-poster-card-top [display:flex] [align-items:center] [justify-content:space-between] [padding:10px_11px] [color:#9c7376] [font-size:7px] [font-weight:800] [letter-spacing:.7px] [&_strong]:[display:grid] [&_strong]:[width:23px] [&_strong]:[height:23px] [&_strong]:[place-items:center] [&_strong]:[border-radius:50%] [&_strong]:[color:#a93646] [&_strong]:[background:#fff0f1] [&_strong]:[font-size:9px] max-[420px]:[padding:8px] max-[420px]:[font-size:6px]">
+                    <span className="mpk-poster-card-top [display:flex] [align-items:center] [justify-content:space-between] [padding:10px_11px] [color:#9c7376] [font-size:7px] [font-weight:800] [letter-spacing:.7px] [&_strong]:[display:grid] [&_strong]:[width:23px] [&_strong]:[height:23px] [&_strong]:[place-items:center] [&_strong]:[border-radius:50%] [&_strong]:[color:#a93646] [&_strong]:[background:#fff0f1] [&_strong]:[font-size:9px] max-[760px]:[padding:7px_8px] max-[760px]:[font-size:6px] max-[760px]:[&_strong]:[width:18px] max-[760px]:[&_strong]:[height:18px] max-[760px]:[&_strong]:[font-size:7px] max-[420px]:[padding:6px] max-[420px]:[font-size:5.5px]">
                       <span>PASANGAN CALON {currentOrganization.name}</span>
                       <strong>{candidate.number}</strong>
                     </span>
-                    <span className={`mpk-poster-portrait pair-poster-portrait  [position:relative] [display:grid] [height:152px] [margin:0_9px] [overflow:hidden] [place-items:center] [border-radius:7px] [background:linear-gradient(145deg,_color-mix(in_srgb,_currentColor_12%,_white),_color-mix(in_srgb,_currentColor_35%,_white))] [&::before]:[position:absolute] [&::before]:[width:125px] [&::before]:[height:125px] [&::before]:[border:1px_solid_rgba(255,255,255,.62)] [&::before]:[border-radius:50%] [&::before]:[content:''] [&::after]:[position:absolute] [&::after]:[width:170px] [&::after]:[height:170px] [&::after]:[border:1px_solid_rgba(255,255,255,.62)] [&::after]:[border-radius:50%] [&::after]:[content:''] [&::before]:[top:19px] [&::before]:[left:-61px] [&::after]:[right:-66px] [&::after]:[bottom:-72px] [&_svg]:[position:relative] [&_svg]:[z-index:1] [&_svg]:[width:100%] [&_svg]:[height:100%] [&_svg]:[padding:13px_10px_0] [&_.mpk-poster-photo]:[position:relative] [&_.mpk-poster-photo]:[z-index:1] [&_.mpk-poster-photo]:[width:100%] [&_.mpk-poster-photo]:[height:100%] [&_.mpk-poster-photo]:[object-fit:cover] max-[760px]:[height:155px] max-[420px]:[height:125px] max-[420px]:[margin:0_6px] [height:245px] [margin:0_12px] [color:#a93646] [background:linear-gradient(145deg,_#f8e9e9,_#f2e4d8)] max-[760px]:[height:205px] max-[420px]:[height:205px]${candidate.color}`}>
+                    <span className={`mpk-poster-portrait pair-poster-portrait  [position:relative] [display:grid] [height:152px] [margin:0_9px] [overflow:hidden] [place-items:center] [border-radius:7px] [background:linear-gradient(145deg,_color-mix(in_srgb,_currentColor_12%,_white),_color-mix(in_srgb,_currentColor_35%,_white))] [&::before]:[position:absolute] [&::before]:[width:125px] [&::before]:[height:125px] [&::before]:[border:1px_solid_rgba(255,255,255,.62)] [&::before]:[border-radius:50%] [&::before]:[content:''] [&::after]:[position:absolute] [&::after]:[width:170px] [&::after]:[height:170px] [&::after]:[border:1px_solid_rgba(255,255,255,.62)] [&::after]:[border-radius:50%] [&::after]:[content:''] [&::before]:[top:19px] [&::before]:[left:-61px] [&::after]:[right:-66px] [&::after]:[bottom:-72px] [&_svg]:[position:relative] [&_svg]:[z-index:1] [&_svg]:[width:100%] [&_svg]:[height:100%] [&_svg]:[padding:13px_10px_0] [&_.mpk-poster-photo]:[position:relative] [&_.mpk-poster-photo]:[z-index:1] [&_.mpk-poster-photo]:[width:100%] [&_.mpk-poster-photo]:[height:100%] [&_.mpk-poster-photo]:[object-fit:cover] max-[760px]:[height:155px] max-[420px]:[height:125px] max-[420px]:[margin:0_6px] [height:245px] [margin:0_12px] [color:#a93646] [background:linear-gradient(145deg,_#f8e9e9,_#f2e4d8)] max-[760px]:[height:clamp(100px,_22vh,_160px)] max-[760px]:[margin:0_7px] max-[420px]:[height:clamp(90px,_20vh,_150px)] max-[420px]:[margin:0_5px] min-[760px]:[height:clamp(90px,17vh,170px)] min-[760px]:[margin:0_8px] ${candidate.color}`}>
                       {candidate.photoDataUrl ? (
                         <Image
                           className="mpk-poster-photo"
@@ -964,21 +859,21 @@ export default function Home() {
                       )}
                       <span className="mpk-poster-photo-label [position:absolute] [right:7px] [bottom:7px] [z-index:2] [padding:4px_6px] [border-radius:4px] [color:#745a59] [background:rgba(255,255,255,.86)] [font-size:6px] [font-weight:800] [letter-spacing:.6px]">{candidate.photoDataUrl ? "FOTO" : "ILUSTRASI"}</span>
                     </span>
-                    <span className="pair-poster-names [display:grid] [width:calc(100%_-_24px)] [margin:0_12px] [border-left:1px_solid_#f1d7d9] [border-right:1px_solid_#f1d7d9] [grid-template-columns:minmax(0,_1fr)_40px_minmax(0,_1fr)] [align-items:center] [column-gap:12px] [row-gap:10px] [padding:19px_24px_0] [text-align:center] [&_>_span:not(.pair-poster-plus)]:[display:flex] [&_>_span:not(.pair-poster-plus)]:[width:100%] [&_>_span:not(.pair-poster-plus)]:[min-width:0] [&_>_span:not(.pair-poster-plus)]:[align-items:center] [&_>_span:not(.pair-poster-plus)]:[flex-direction:column] [&_>_span:not(.pair-poster-plus)]:[gap:7px] [&_small]:[color:#a93646] [&_small]:[font-size:9px] [&_small]:[font-weight:800] [&_small]:[letter-spacing:.8px] [&_strong]:[color:#35473d] [&_strong]:[font:800_16px/1.4_'Manrope',_sans-serif] [&_strong]:[overflow-wrap:anywhere] max-[760px]:[grid-template-columns:minmax(0,_1fr)_36px_minmax(0,_1fr)] max-[760px]:[column-gap:8px] max-[760px]:[padding:16px_18px_0] max-[420px]:[grid-template-columns:minmax(0,_1fr)_28px_minmax(0,_1fr)] max-[420px]:[column-gap:5px] max-[420px]:[padding:14px_12px_0] max-[420px]:[&_small]:[font-size:8px] max-[420px]:[&_strong]:[font-size:13px]">
+                    <span className="pair-poster-names [display:grid] [width:calc(100%_-_24px)] [margin:0_12px] [border-left:1px_solid_#f1d7d9] [border-right:1px_solid_#f1d7d9] [grid-template-columns:minmax(0,_1fr)_40px_minmax(0,_1fr)] [align-items:center] [column-gap:12px] [row-gap:10px] [padding:19px_24px_0] [text-align:center] [&_>_span:not(.pair-poster-plus)]:[display:flex] [&_>_span:not(.pair-poster-plus)]:[width:100%] [&_>_span:not(.pair-poster-plus)]:[min-width:0] [&_>_span:not(.pair-poster-plus)]:[align-items:center] [&_>_span:not(.pair-poster-plus)]:[flex-direction:column] [&_>_span:not(.pair-poster-plus)]:[gap:7px] [&_small]:[color:#a93646] [&_small]:[font-size:9px] [&_small]:[font-weight:800] [&_small]:[letter-spacing:.8px] [&_strong]:[color:#35473d] [&_strong]:[font:800_16px/1.4_'Manrope',_sans-serif] [&_strong]:[overflow-wrap:anywhere] max-[760px]:[grid-template-columns:minmax(0,_1fr)_36px_minmax(0,_1fr)] max-[760px]:[column-gap:8px] max-[760px]:[padding:16px_18px_0] max-[420px]:[grid-template-columns:minmax(0,_1fr)_28px_minmax(0,_1fr)] max-[420px]:[column-gap:5px] max-[420px]:[padding:14px_12px_0] max-[420px]:[&_strong]:[font-size:13px] max-[760px]:[padding:8px_8px_0] max-[760px]:[row-gap:4px] max-[760px]:[&_>_span:not(.pair-poster-plus)]:[gap:3px] max-[760px]:[&_strong]:[font-size:11px] max-[760px]:[&_strong]:[line-height:1.25] max-[760px]:[&_small]:[font-size:7px] max-[420px]:[&_strong]:[font-size:10px] min-[760px]:[padding:8px_12px_0] min-[760px]:[row-gap:4px] min-[760px]:[&_>_span:not(.pair-poster-plus)]:[gap:3px] min-[760px]:[&_strong]:[font-size:13px] min-[760px]:[&_strong]:[line-height:1.25]">
                       <span><small>CALON KETUA</small><strong>{candidate.name}</strong><i className="[display:block] [width:24px] [height:2px] [margin:2px_auto_0] [border-radius:2px] [background:#eadcda]" aria-hidden="true" /></span>
                       <span className="pair-poster-plus [display:grid] [width:40px] [align-self:stretch] [place-items:center] [justify-self:center] [margin:0] [color:#bd3548] [font:800_20px_'Manrope',_sans-serif] [line-height:1] [text-align:center] max-[760px]:[width:36px] max-[420px]:[width:28px]" aria-hidden="true">&amp;</span>
                       <span><small>CALON WAKIL</small><strong>{candidate.viceName}</strong><i className="[display:block] [width:24px] [height:2px] [margin:2px_auto_0] [border-radius:2px] [background:#eadcda]" aria-hidden="true" /></span>
                     </span>
-                    <span className="pair-poster-profile [display:flex] [flex-direction:column] [padding:0_18px] max-[760px]:[padding:0_12px]">
-                      <span className="candidate-profile-block [display:flex] [flex-direction:column] [gap:5px] [margin-top:13px] [padding:7px_0]">
-                        <span className="mpk-poster-copy-label [display:flex] [align-items:center] [gap:5px] [color:#a93646] [font-size:8px] [font-weight:800] [letter-spacing:.9px] [text-transform:uppercase]"><span className="[width:5px] [height:5px] [border-radius:50%] [background:#e5bfc0]" aria-hidden="true" />Visi{vision ? "" : " · Contoh"}</span>
-                        <span className="mpk-poster-vision [color:#4b5a51] [font-size:12px] [line-height:1.65] [overflow-wrap:anywhere] max-[420px]:[font-size:11px]">{vision || candidate.program}</span>
+                    <span className="pair-poster-profile [display:flex] [flex:1] [flex-direction:column] [padding:0_10px] [overflow:hidden] max-[760px]:[display:none]">
+                      <span className="candidate-profile-block [display:flex] [flex-direction:column] [gap:5px] [margin-top:13px] [padding:7px_0] min-[760px]:[margin-top:6px] min-[760px]:[gap:2px] min-[760px]:[padding:3px_0]">
+                        <span className="mpk-poster-copy-label [display:flex] [align-items:center] [gap:5px] [color:#a93646] [font-size:8px] [font-weight:800] [letter-spacing:.9px] [text-transform:uppercase] min-[760px]:[font-size:7px]"><span className="[width:5px] [height:5px] [border-radius:50%] [background:#e5bfc0]" aria-hidden="true" />Visi{vision ? "" : " · Contoh"}</span>
+                        <span className="mpk-poster-vision [color:#4b5a51] [font-size:12px] [line-height:1.65] [overflow-wrap:anywhere] max-[420px]:[font-size:11px] min-[760px]:[font-size:10px] min-[760px]:[line-height:1.4] min-[760px]:[display:-webkit-box] min-[760px]:[overflow:hidden] min-[760px]:[-webkit-box-orient:vertical] min-[760px]:[-webkit-line-clamp:2]">{vision || candidate.program}</span>
                       </span>
-                      <span className="candidate-profile-block [display:flex] [flex-direction:column] [gap:5px] [margin-top:7px] [padding:7px_0]">
-                        <span className="mpk-poster-copy-label [display:flex] [align-items:center] [gap:5px] [color:#a93646] [font-size:8px] [font-weight:800] [letter-spacing:.9px] [text-transform:uppercase]"><span className="[width:5px] [height:5px] [border-radius:50%] [background:#e5bfc0]" aria-hidden="true" />Misi{mission ? "" : " · Contoh"}</span>
-                        <span className="mpk-poster-missions [display:grid] [gap:6px] [&_>_span]:[position:relative] [&_>_span]:[padding-left:13px] [&_>_span]:[color:#4b5a51] [&_>_span]:[font-size:11px] [&_>_span]:[line-height:1.6] [&_>_span]:[overflow-wrap:anywhere] [&_>_span::before]:[position:absolute] [&_>_span::before]:[top:0] [&_>_span::before]:[left:0] [&_>_span::before]:[color:#bd3548] [&_>_span::before]:[content:'•'] max-[420px]:[&_>_span]:[font-size:10px]">
+                      <span className="candidate-profile-block [display:flex] [flex-direction:column] [gap:5px] [margin-top:7px] [padding:7px_0] min-[760px]:[margin-top:4px] min-[760px]:[gap:2px] min-[760px]:[padding:3px_0]">
+                        <span className="mpk-poster-copy-label [display:flex] [align-items:center] [gap:5px] [color:#a93646] [font-size:8px] [font-weight:800] [letter-spacing:.9px] [text-transform:uppercase] min-[760px]:[font-size:7px]"><span className="[width:5px] [height:5px] [border-radius:50%] [background:#e5bfc0]" aria-hidden="true" />Misi{mission ? "" : " · Contoh"}</span>
+                        <span className="mpk-poster-missions [display:grid] [gap:6px] [&_>_span]:[position:relative] [&_>_span]:[padding-left:13px] [&_>_span]:[color:#4b5a51] [&_>_span]:[font-size:11px] [&_>_span]:[line-height:1.6] [&_>_span]:[overflow-wrap:anywhere] [&_>_span::before]:[position:absolute] [&_>_span::before]:[top:0] [&_>_span::before]:[left:0] [&_>_span::before]:[color:#bd3548] [&_>_span::before]:[content:'•'] max-[420px]:[&_>_span]:[font-size:10px] min-[760px]:[gap:2px] min-[760px]:[&_>_span]:[font-size:9.5px] min-[760px]:[&_>_span]:[line-height:1.35] min-[760px]:[&_>_span]:[display:-webkit-box] min-[760px]:[&_>_span]:[overflow:hidden] min-[760px]:[&_>_span]:[-webkit-box-orient:vertical] min-[760px]:[&_>_span]:[-webkit-line-clamp:2]">
                           {(mission
-                            ? mission.split(/\n+/).map((item) => item.trim()).filter(Boolean)
+                            ? mission.split(/\n+/).map((item) => item.trim()).filter(Boolean).slice(0, 2)
                             : [candidate.motto]
                           ).map((item) => <span key={item}>{item}</span>)}
                         </span>
@@ -1369,7 +1264,24 @@ export default function Home() {
         }}>
           <section className="confirmation-modal motion-safe:animate-modal-in [width:min(420px,_100%)] [position:relative] [padding:31px] [border-radius:13px] [background:#fff] [box-shadow:0_20px_65px_rgba(81,_35,_40,_.2)] [text-align:center] [&_h2]:[margin:9px_0_9px] [&_h2]:[color:#432d31] [&_h2]:[font:700_20px_'Manrope',_sans-serif] [&_h2]:[letter-spacing:-.7px] [&_>_p]:[max-width:320px] [&_>_p]:[margin:0_auto] [&_>_p]:[color:#79847b] [&_>_p]:[font-size:10px] [&_>_p]:[line-height:1.7] [&_>_p_strong]:[color:#a93646] [border:1px_solid_#f1dfdf] [&_.modal-candidate-avatar]:[color:#a93646] [&_.modal-candidate-avatar]:[background:#fff0f1] [&_.modal-close]:[color:#9c6f74] [&_.modal-close]:[background:#fff4f4] [&_.modal-actions_.primary-button]:[background:linear-gradient(110deg,_#d84c5c,_#bd3548)] [&_.modal-actions_.primary-button:hover:not(:disabled)]:[background:#ad293b] [&_.modal-actions_.primary-button:focus-visible]:[outline-color:#e7a0a7] [&_.secondary-button]:[border-color:#f0dfe0] [&_.secondary-button]:[color:#80585d] [&_.secondary-button:hover]:[border-color:#d98b94] [&_.secondary-button:hover]:[background:#fff8f8]" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
             <button className="modal-close [position:absolute] [top:12px] [right:14px] [width:27px] [height:27px] [border:0] [border-radius:50%] [color:#8f9990] [background:#f5f6f2] [font-size:18px] [cursor:pointer]" onClick={() => setShowConfirmation(false)} aria-label="Tutup">×</button>
-            <span className={`modal-candidate-avatar  [width:54px] [height:54px] [display:grid] [place-items:center] [margin:0_auto_15px] [border-radius:50%] [font:700_16px_'Manrope',_sans-serif]${selectedCandidateDetails.color}`}>{selectedCandidateDetails.initials}</span>
+            {selectedCandidateDetails.photoDataUrl ? (
+              <Image
+                className="modal-candidate-avatar [block] [width:80px] [height:80px] [margin:0_auto_15px] [border:2px_solid_#fff0f1] [border-radius:50%] [object-fit:cover]"
+                src={selectedCandidateDetails.photoDataUrl}
+                alt={
+                  activeOrganization === "mpk"
+                    ? `Foto ${selectedCandidateDetails.name}`
+                    : `Foto pasangan ${selectedCandidateDetails.name} dan ${selectedCandidateDetails.viceName}`
+                }
+                width={80}
+                height={80}
+                unoptimized
+              />
+            ) : (
+              <span className="modal-candidate-avatar [width:80px] [height:80px] [display:grid] [place-items:center] [margin:0_auto_15px] [border-radius:50%] [color:#a93646] [background:#fff0f1] [font:700_20px_'Manrope',_sans-serif]">
+                {selectedCandidateDetails.initials}
+              </span>
+            )}
             <span className="eyebrow dark-eyebrow [font-size:9px] [font-weight:700] [letter-spacing:1.15px] [color:#849177]">KONFIRMASI PILIHAN</span>
             <h2 id="confirm-title">Sudah yakin dengan pilihanmu?</h2>
             <p>

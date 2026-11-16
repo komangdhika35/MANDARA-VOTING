@@ -35,6 +35,7 @@ type VoterResult = {
   name: string;
   participatedOrganizations: OrganizationId[];
   searchIdentifiers: string[];
+  hasMpkChoices: boolean;
 };
 
 type Results = {
@@ -1434,10 +1435,14 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => Promise<v
                           <div className="[min-width:0] [flex:1]">
                             <strong className="[display:block] [overflow-wrap:anywhere] [color:#34483e] [font-size:10px]">{voter.name}</strong>
                             <span className={`[display:inline-block] [margin-top:5px] [font-size:8px] [font-weight:600] ${hasParticipated ? "[color:#43634a]" : "[color:#8a6c38]"}`}>
-                              {hasParticipated ? "Sudah memilih" : "Belum memilih"}
+                              {hasParticipated
+                                ? "Sudah memilih"
+                                : voter.hasMpkChoices
+                                  ? "Pilihan MPK belum lengkap"
+                                  : "Belum memilih"}
                             </span>
                           </div>
-                          {hasParticipated && (
+                          {(hasParticipated || voter.hasMpkChoices) && (
                             <button
                               type="button"
                               className="reset-vote-button [min-height:32px] [flex:0_0_auto] [padding:0_10px] [border:1px_solid_#f0d7d9] [border-radius:5px] [color:#ae3443] [background:#fff7f7] [font-size:8px] [font-weight:700] [cursor:pointer] [&:hover:not(:disabled)]:[border-color:#dfabb0] [&:hover:not(:disabled)]:[background:#ffeff0] [&:disabled]:[opacity:.55] [&:disabled]:[cursor:not-allowed]"

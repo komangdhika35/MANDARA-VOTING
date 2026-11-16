@@ -74,13 +74,10 @@ export function getElectionCandidates(): ElectionCandidates {
   const candidateCountByOrganization = new Map(
     candidateCountRows.map((row) => [row.organization_id, row.candidate_count]),
   );
-  const candidateCounts = {
-    osis: candidateCountByOrganization.get("osis"),
-    ky: candidateCountByOrganization.get("ky"),
+  const candidateCounts: Record<"osis" | "ky", number> = {
+    osis: candidateCountByOrganization.get("osis") ?? 2,
+    ky: candidateCountByOrganization.get("ky") ?? 2,
   };
-  if (candidateCounts.osis === undefined || candidateCounts.ky === undefined) {
-    throw new Error("Jumlah pasangan calon OSIS atau KY tidak ditemukan.");
-  }
 
   const memberRows = database
     .prepare(

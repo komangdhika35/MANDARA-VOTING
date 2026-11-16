@@ -61,13 +61,23 @@ export async function GET() {
       .get() as { total: number };
     const voterRows = database
       .prepare(
-        `SELECT voters.nis, voters.name, participation.organization_id
+        `SELECT voters.nis, voters.name, participation.organization_id,
+                EXISTS (
+                  SELECT 1
+                  FROM mpk_choices
+                  WHERE mpk_choices.nis = voters.nis
+                ) AS has_mpk_choices
          FROM voters
          LEFT JOIN participation ON participation.nis = voters.nis
          WHERE voters.active = 1
          ORDER BY voters.name COLLATE NOCASE, participation.organization_id`,
       )
-      .all() as { organization_id: string | null; nis: string; name: string }[];
+      .all() as {
+      has_mpk_choices: number;
+      organization_id: string | null;
+      nis: string;
+      name: string;
+    }[];
     const votersByNis = new Map<
       string,
       {
@@ -75,6 +85,7 @@ export async function GET() {
         name: string;
         participatedOrganizations: OrganizationId[];
         searchIdentifiers: string[];
+        hasMpkChoices: boolean;
       }
     >();
     const votersByOrganization = new Map<OrganizationId, { nis: string; name: string }[]>(
@@ -86,6 +97,7 @@ export async function GET() {
         name: row.name,
         participatedOrganizations: [],
         searchIdentifiers: [row.nis],
+        hasMpkChoices: row.has_mpk_choices === 1,
       };
       if (
         row.organization_id &&
