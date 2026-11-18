@@ -2,6 +2,8 @@
 
 import Image from "next/image";
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { PointerEvent as ReactPointerEvent } from "react";
+import { createPortal } from "react-dom";
 import type {
   CandidateConfigurations,
   ElectionCandidates,
@@ -42,6 +44,7 @@ type Results = {
   organizations: OrganizationResult[];
   voters: VoterResult[];
   totalVotes: number;
+  totalVoters: number;
 };
 
 function readCandidatePhoto(file: File, subject = "Foto calon"): Promise<string> {
@@ -64,6 +67,10 @@ function readCandidatePhoto(file: File, subject = "Foto calon"): Promise<string>
 }
 
 type PhotoCropVariant = "mpk" | "pair";
+
+function clampNumber(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
 
 function createRotatedPhotoCanvas(image: HTMLImageElement, rotation: number) {
   const isSideways = rotation % 180 !== 0;
@@ -208,44 +215,45 @@ function CandidatePhotoCropEditor({
   onApply: (photoDataUrl: string) => void;
 }) {
   const previewCanvasRef = useRef<HTMLCanvasElement>(null);
+  const previewFrameRef = useRef<HTMLDivElement>(null);
+  const imageRef = useRef<HTMLImageElement | null>(null);
+  const sourceSizeRef = useRef<{ width: number; height: number } | null>(null);
+  const dragRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    startHorizontal: number;
+    startVertical: number;
+  } | null>(null);
+  const pinchRef = useRef<{ distance: number; zoom: number } | null>(null);
+  const pointersRef = useRef(new Map<number, { x: number; y: number }>());
   const [zoom, setZoom] = useState(1);
   const [rotation, setRotation] = useState(0);
   const [horizontalPosition, setHorizontalPosition] = useState(50);
   const [verticalPosition, setVerticalPosition] = useState(50);
   const [imageReady, setImageReady] = useState(false);
+  const [dragging, setDragging] = useState(false);
   const [savingCrop, setSavingCrop] = useState(false);
   const [cropError, setCropError] = useState("");
   const aspectRatio = variant === "mpk" ? 3 / 4 : 360 / 245;
+  const zoomRef = useRef(zoom);
+
+  useEffect(() => {
+    zoomRef.current = zoom;
+  }, [zoom]);
+
+  const reportPreviewError = useCallback((error: unknown) => {
+    setCropError(error instanceof Error ? error.message : "Tidak dapat menampilkan foto.");
+  }, []);
 
   useEffect(() => {
     let active = true;
     const image = new window.Image();
     image.onload = () => {
       if (!active) return;
-      try {
-        const rotatedPhoto = createRotatedPhotoCanvas(image, rotation);
-        const previewCanvas = previewCanvasRef.current;
-        const context = previewCanvas?.getContext("2d");
-        if (!previewCanvas || !context) {
-          throw new Error("Tidak dapat menampilkan pratinjau foto.");
-        }
-        drawCandidatePhotoCrop(
-          context,
-          rotatedPhoto,
-          rotatedPhoto.width,
-          rotatedPhoto.height,
-          previewCanvas.width,
-          previewCanvas.height,
-          aspectRatio,
-          zoom,
-          horizontalPosition,
-          verticalPosition,
-        );
-        setCropError("");
-        setImageReady(true);
-      } catch (error) {
-        setCropError(error instanceof Error ? error.message : "Tidak dapat menampilkan foto.");
-      }
+      imageRef.current = image;
+      setImageReady(true);
+      setCropError("");
     };
     image.onerror = () => {
       if (active) setCropError("Foto tidak dapat dibuka untuk diputar.");
@@ -255,7 +263,167 @@ function CandidatePhotoCropEditor({
     return () => {
       active = false;
     };
-  }, [aspectRatio, horizontalPosition, photoDataUrl, rotation, verticalPosition, zoom]);
+  }, [photoDataUrl]);
+
+  useEffect(() => {
+    const image = imageRef.current;
+    const previewCanvas = previewCanvasRef.current;
+    const context = previewCanvas?.getContext("2d");
+    if (!imageReady || !image || !previewCanvas || !context) return;
+
+    try {
+      const rotatedPhoto = createRotatedPhotoCanvas(image, rotation);
+      sourceSizeRef.current = { width: rotatedPhoto.width, height: rotatedPhoto.height };
+      drawCandidatePhotoCrop(
+        context,
+        rotatedPhoto,
+        rotatedPhoto.width,
+        rotatedPhoto.height,
+        previewCanvas.width,
+        previewCanvas.height,
+        aspectRatio,
+        zoom,
+        horizontalPosition,
+        verticalPosition,
+      );
+    } catch (error) {
+      queueMicrotask(() => reportPreviewError(error));
+    }
+  }, [aspectRatio, horizontalPosition, imageReady, reportPreviewError, rotation, verticalPosition, zoom]);
+
+  useEffect(() => {
+    const frame = previewFrameRef.current;
+    if (!frame || !imageReady || savingCrop) return;
+
+    const handleWheel = (event: WheelEvent) => {
+      event.preventDefault();
+      const factor = Math.exp(-event.deltaY * 0.0014);
+      setZoom((current) => clampNumber(current * factor, 1, 3));
+    };
+
+    frame.addEventListener("wheel", handleWheel, { passive: false });
+    return () => frame.removeEventListener("wheel", handleWheel);
+  }, [imageReady, savingCrop]);
+
+  useEffect(() => {
+    if (!dragging) return;
+
+    const resetDrag = () => {
+      pointersRef.current.clear();
+      pinchRef.current = null;
+      dragRef.current = null;
+      setDragging(false);
+    };
+
+    window.addEventListener("pointerup", resetDrag);
+    window.addEventListener("pointercancel", resetDrag);
+    window.addEventListener("blur", resetDrag);
+    return () => {
+      window.removeEventListener("pointerup", resetDrag);
+      window.removeEventListener("pointercancel", resetDrag);
+      window.removeEventListener("blur", resetDrag);
+    };
+  }, [dragging]);
+
+  function stopDragging() {
+    pointersRef.current.clear();
+    pinchRef.current = null;
+    dragRef.current = null;
+    setDragging(false);
+  }
+
+  function handlePreviewPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
+    if (savingCrop || !imageReady) return;
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+    event.preventDefault();
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch {
+      // Pointer capture tidak tersedia; gestur tetap berjalan lewat event biasa.
+    }
+    pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    const points = [...pointersRef.current.values()];
+
+    if (points.length === 1) {
+      pinchRef.current = null;
+      dragRef.current = {
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        startHorizontal: horizontalPosition,
+        startVertical: verticalPosition,
+      };
+      setDragging(true);
+      return;
+    }
+
+    if (points.length === 2) {
+      dragRef.current = null;
+      pinchRef.current = {
+        distance: Math.max(1, Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y)),
+        zoom: zoomRef.current,
+      };
+      setDragging(true);
+    }
+  }
+
+  function handlePreviewPointerMove(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!pointersRef.current.has(event.pointerId)) return;
+    pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    const points = [...pointersRef.current.values()];
+
+    if (pinchRef.current && points.length >= 2) {
+      const distance = Math.max(
+        1,
+        Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y),
+      );
+      setZoom(clampNumber(pinchRef.current.zoom * (distance / pinchRef.current.distance), 1, 3));
+      return;
+    }
+
+    const drag = dragRef.current;
+    const frame = previewFrameRef.current;
+    const sourceSize = sourceSizeRef.current;
+    if (!drag || drag.pointerId !== event.pointerId || !frame || !sourceSize) return;
+    if (frame.clientWidth === 0 || frame.clientHeight === 0) return;
+
+    const cropWidth = Math.min(sourceSize.width, sourceSize.height * aspectRatio) / zoomRef.current;
+    const cropHeight = cropWidth / aspectRatio;
+    const slackX = sourceSize.width - cropWidth;
+    const slackY = sourceSize.height - cropHeight;
+    const deltaX = event.clientX - drag.startX;
+    const deltaY = event.clientY - drag.startY;
+
+    if (slackX > 0.5) {
+      const movedX = (deltaX / frame.clientWidth) * cropWidth;
+      setHorizontalPosition(clampNumber(drag.startHorizontal - (movedX / slackX) * 100, 0, 100));
+    }
+    if (slackY > 0.5) {
+      const movedY = (deltaY / frame.clientHeight) * cropHeight;
+      setVerticalPosition(clampNumber(drag.startVertical - (movedY / slackY) * 100, 0, 100));
+    }
+  }
+
+  function handlePreviewPointerEnd(event: ReactPointerEvent<HTMLDivElement>) {
+    pointersRef.current.delete(event.pointerId);
+    if (pointersRef.current.size < 2) pinchRef.current = null;
+    if (pointersRef.current.size === 0) stopDragging();
+    else dragRef.current = null;
+
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      try {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      } catch {
+        // Abaikan bila pointer sudah tidak aktif.
+      }
+    }
+  }
+
+  function resetCrop() {
+    setZoom(1);
+    setHorizontalPosition(50);
+    setVerticalPosition(50);
+  }
 
   async function applyCrop() {
     setSavingCrop(true);
@@ -278,7 +446,10 @@ function CandidatePhotoCropEditor({
     }
   }
 
-  return (
+  if (typeof document === "undefined") return null;
+
+  return createPortal(
+    (
     <div
       className="[position:fixed] [inset:0] [z-index:100] [display:grid] [place-items:center] [padding:20px] [background:rgba(22,35,29,.62)]"
       role="dialog"
@@ -295,7 +466,7 @@ function CandidatePhotoCropEditor({
               Atur potongan foto
             </h2>
             <p className="[margin:5px_0_14px] [color:#78827d] [font-size:10px]">
-              Geser foto dan atur zoom sampai tampilannya sesuai.
+              Geser foto langsung pada pratinjau. Scroll atau cubit untuk mengubah ukuran.
             </p>
           </div>
           <button
@@ -309,8 +480,14 @@ function CandidatePhotoCropEditor({
           </button>
         </div>
         <div
-          className="[position:relative] [width:min(100%,_360px)] [margin:0_auto] [overflow:hidden] [border:1px_solid_#e5e6df] [border-radius:8px] [background:linear-gradient(145deg,_#f8e9e9,_#f2e4d8)]"
+          ref={previewFrameRef}
+          className={`[position:relative] [width:min(100%,_360px)] [margin:0_auto] [overflow:hidden] [border:1px_solid_#e5e6df] [border-radius:8px] [background:linear-gradient(145deg,_#f8e9e9,_#f2e4d8)] [touch-action:none] [user-select:none] ${dragging ? "[cursor:grabbing]" : "[cursor:grab]"}`}
           style={{ aspectRatio: String(aspectRatio) }}
+          onPointerDown={handlePreviewPointerDown}
+          onPointerMove={handlePreviewPointerMove}
+          onPointerUp={handlePreviewPointerEnd}
+          onPointerCancel={handlePreviewPointerEnd}
+          onLostPointerCapture={handlePreviewPointerEnd}
         >
           <canvas
             ref={previewCanvasRef}
@@ -345,40 +522,19 @@ function CandidatePhotoCropEditor({
               ↻ 90°
             </button>
           </div>
-          <label>
-            Zoom
-            <input
-              type="range"
-              min="1"
-              max="3"
-              step="0.01"
-              value={zoom}
+          <div className="[display:flex] [align-items:center] [gap:8px] [flex-wrap:wrap]">
+            <p className="[flex:1_1_170px] [margin:0] [color:#78827d] [font-size:9px] [line-height:1.5]">
+              Geser foto ke kiri, kanan, atas, atau bawah. Scroll atau cubit untuk mengubah ukuran.
+            </p>
+            <button
+              type="button"
+              className="[min-height:30px] [padding:0_9px] [border:1px_solid_#e5e6df] [border-radius:5px] [color:#647168] [background:#fff] [font-size:9px] [font-weight:700] [cursor:pointer] [&:disabled]:[opacity:.6]"
               disabled={savingCrop}
-              onChange={(event) => setZoom(Number(event.target.value))}
-            />
-          </label>
-          <label>
-            Geser horizontal
-            <input
-              type="range"
-              min="0"
-              max="100"
-              value={horizontalPosition}
-              disabled={savingCrop}
-              onChange={(event) => setHorizontalPosition(Number(event.target.value))}
-            />
-          </label>
-          <label>
-            Geser vertikal
-            <input
-              type="range"
-              min="0"
-              max="100"
-              value={verticalPosition}
-              disabled={savingCrop}
-              onChange={(event) => setVerticalPosition(Number(event.target.value))}
-            />
-          </label>
+              onClick={resetCrop}
+            >
+              Reset posisi
+            </button>
+          </div>
         </div>
         {cropError && (
           <p className="[margin:12px_0_0] [color:#b6473d] [font-size:9px]" role="alert">
@@ -405,6 +561,8 @@ function CandidatePhotoCropEditor({
         </div>
       </section>
     </div>
+    ),
+    document.body,
   );
 }
 
@@ -491,12 +649,7 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => Promise<v
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [logoutError, setLogoutError] = useState("");
-  const [resetTarget, setResetTarget] = useState<{
-    nis: string;
-    name: string;
-    organizationId: string;
-    organizationName: string;
-  } | null>(null);
+  const [resetAllOpen, setResetAllOpen] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [resetError, setResetError] = useState("");
   const [resetMessage, setResetMessage] = useState("");
@@ -790,8 +943,7 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => Promise<v
     }
   }, []);
 
-  async function resetVote() {
-    if (!resetTarget) return;
+  async function resetAllVotes() {
     setResetting(true);
     setResetError("");
     setResetMessage("");
@@ -799,24 +951,21 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => Promise<v
       const response = await fetch("/api/admin/reset-vote", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          nis: resetTarget.nis,
-          organizationId: resetTarget.organizationId,
-        }),
+        body: JSON.stringify({ resetAll: true }),
       });
-      const data = (await response.json()) as { error?: string };
+      const data = (await response.json()) as {
+        error?: string;
+        totalVoters?: number;
+        totalVotes?: number;
+      };
       if (!response.ok) throw new Error(data.error ?? "Suara belum dapat direset.");
 
       setResetMessage(
-        resetTarget.organizationId === "all"
-          ? `Semua pilihan ${resetTarget.name} sudah direset. Siswa dapat masuk kembali dan memilih ulang dari awal.`
-          : `Suara ${resetTarget.name} untuk ${resetTarget.organizationName} sudah direset. Siswa perlu masuk kembali untuk memilih ulang.`,
+        `Semua suara (${data.totalVotes ?? 0} pilihan dari ${data.totalVoters ?? 0} pemilih) sudah direset. Siswa dapat masuk kembali dan memilih ulang dari awal.`,
       );
-      if (resetTarget.organizationId === "all") {
-        setVoterCategory("not-voted");
-        setVoterSearch(resetTarget.nis);
-      }
-      setResetTarget(null);
+      setVoterCategory("not-voted");
+      setVoterSearch("");
+      setResetAllOpen(false);
       await loadResults();
     } catch (resetFailure) {
       setResetError(
@@ -1394,6 +1543,18 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => Promise<v
               <h2>Daftar pemilih</h2>
                   <p>Cari pemilih berdasarkan nama atau NIS.</p>
             </div>
+            <button
+              type="button"
+              className="reset-all-votes-button [min-height:36px] [flex:0_0_auto] [padding:0_13px] [border:1px_solid_#f0d7d9] [border-radius:6px] [color:#ae3443] [background:#fff7f7] [font-size:9px] [font-weight:700] [cursor:pointer] [&:hover:not(:disabled)]:[border-color:#dfabb0] [&:hover:not(:disabled)]:[background:#ffeff0] [&:disabled]:[opacity:.55] [&:disabled]:[cursor:not-allowed]"
+              disabled={resetting || loading}
+              onClick={() => {
+                setResetError("");
+                setResetMessage("");
+                setResetAllOpen(true);
+              }}
+            >
+              Reset semua suara
+            </button>
           </div>
               <div className="[display:flex] [align-items:center] [justify-content:space-between] [gap:12px] [margin-bottom:12px] max-[600px]:[align-items:stretch] max-[600px]:[flex-direction:column]">
                 <label className="[position:relative] [flex:1] [max-width:420px] max-[600px]:[max-width:none]">
@@ -1442,25 +1603,6 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => Promise<v
                                   : "Belum memilih"}
                             </span>
                           </div>
-                          {(hasParticipated || voter.hasMpkChoices) && (
-                            <button
-                              type="button"
-                              className="reset-vote-button [min-height:32px] [flex:0_0_auto] [padding:0_10px] [border:1px_solid_#f0d7d9] [border-radius:5px] [color:#ae3443] [background:#fff7f7] [font-size:8px] [font-weight:700] [cursor:pointer] [&:hover:not(:disabled)]:[border-color:#dfabb0] [&:hover:not(:disabled)]:[background:#ffeff0] [&:disabled]:[opacity:.55] [&:disabled]:[cursor:not-allowed]"
-                              disabled={resetting}
-                              onClick={() => {
-                                setResetError("");
-                                setResetTarget({
-                                  nis: voter.nis,
-                                  name: voter.name,
-                                  organizationId: "all",
-                                  organizationName: "semua organisasi",
-                                });
-                              }}
-                              aria-label={`Reset semua suara ${voter.name}`}
-                            >
-                              Reset
-                            </button>
-                          )}
                         </li>
                       );
                     })}
@@ -1486,11 +1628,11 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => Promise<v
 
         <section className="admin-total-card [min-height:104px] [display:flex] [align-items:center] [gap:15px] [padding:19px_22px] [border:1px_solid_#f0e2e3] [border-radius:11px] [background:linear-gradient(110deg,_#fff_12%,_#fff7f7_100%)] [&_small]:[display:block] [&_strong]:[display:block] [&_small]:[color:#9a8587] [&_small]:[font-size:8px] [&_small]:[font-weight:700] [&_small]:[letter-spacing:.8px] [&_strong]:[margin-top:5px] [&_strong]:[color:#342b2c] [&_strong]:[font:800_25px_'Nunito',_sans-serif] max-[420px]:[gap:11px] max-[420px]:[padding:15px]" aria-live="polite">
           <span className="admin-total-icon [width:43px] [height:43px] [border-radius:12px] [display:grid] [place-items:center] [color:#bd3548] [background:#ffeaec] [font-size:20px]" aria-hidden="true">✓</span>
-          <span><small>TOTAL SUARA TERCATAT</small><strong key={results?.totalVotes ?? "loading"} className="motion-safe:animate-number-in">{loading && !results ? "—" : results?.totalVotes ?? 0}</strong></span>
-          <span className="admin-total-caption [margin-left:auto] [color:#9a8c8d] [font-size:9px] max-[760px]:[max-width:140px] max-[760px]:[text-align:right] max-[760px]:[line-height:1.5] max-[420px]:[max-width:115px] max-[420px]:[font-size:8px]">Data diambil langsung dari database SQLite</span>
+          <span><small>TOTAL PEMILIH</small><strong key={results?.totalVoters ?? "loading"} className="motion-safe:animate-number-in">{loading && !results ? "—" : results?.totalVoters ?? 0}</strong></span>
+          <span className="admin-total-caption [margin-left:auto] [color:#9a8c8d] [font-size:9px] max-[760px]:[max-width:140px] max-[760px]:[text-align:right] max-[760px]:[line-height:1.5] max-[420px]:[max-width:115px] max-[420px]:[font-size:8px]">Jumlah siswa yang sudah memberikan suara</span>
         </section>
         <p className="admin-privacy-notice [margin:11px_0_0] [padding:10px_12px] [border:1px_solid_#f1e2c6] [border-radius:8px] [color:#795a2d] [background:#fffaf0] [font-size:9px] [line-height:1.55]" role="note">
-          Nama ditampilkan hanya untuk mencatat partisipasi dan mengelola reset. Pilihan setiap pemilih tidak ditampilkan atau dihubungkan dengan hasil.
+          Nama ditampilkan hanya untuk mencatat partisipasi pemilih. Pilihan setiap pemilih tidak ditampilkan atau dihubungkan dengan hasil.
         </p>
 
         <section className="results-grid [display:grid] [grid-template-columns:repeat(3,_minmax(0,_1fr))] [gap:15px] [margin-top:17px] max-[760px]:[grid-template-columns:1fr] max-[760px]:[gap:10px]" aria-label="Rekap suara tiap organisasi" aria-busy={loading}>
@@ -1611,36 +1753,6 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => Promise<v
                             <small>NIS: {voter.nis}</small>
                             <span>{voter.candidateName}</span>
                           </span>
-                          <span className="[display:flex] [flex:0_0_auto] [flex-direction:column] [align-items:stretch] [gap:4px]">
-                            <button
-                              className="reset-vote-button [padding:5px_8px] [border:1px_solid_#f0d7d9] [border-radius:5px] [color:#ae3443] [background:#fff7f7] [font-size:8px] [font-weight:700] [cursor:pointer] [&:hover]:[border-color:#dfabb0] [&:hover]:[background:#ffeff0] [&:disabled]:[opacity:.6] [&:disabled]:[cursor:wait]"
-                              onClick={() => {
-                                setResetError("");
-                                setResetTarget({
-                                  ...voter,
-                                  organizationId: organization.id,
-                                  organizationName: organization.name,
-                                });
-                              }}
-                              aria-label={`Reset suara ${voter.name} untuk ${organization.name}`}
-                            >
-                              Reset
-                            </button>
-                            <button
-                              className="reset-vote-button [padding:5px_8px] [border:1px_solid_#eadfd0] [border-radius:5px] [color:#7b5d32] [background:#fffaf1] [font-size:8px] [font-weight:700] [cursor:pointer] [&:hover]:[border-color:#d7c098] [&:hover]:[background:#fff3dd]"
-                              onClick={() => {
-                                setResetError("");
-                                setResetTarget({
-                                  ...voter,
-                                  organizationId: "all",
-                                  organizationName: "semua organisasi",
-                                });
-                              }}
-                              aria-label={`Reset semua pilihan ${voter.name}`}
-                            >
-                              Reset semua
-                            </button>
-                          </span>
                         </li>
                       ))}
                     </ul>
@@ -1683,9 +1795,9 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => Promise<v
         </footer>
         </section>
       </div>
-      {resetTarget && (
+      {resetAllOpen && (
         <div className="modal-backdrop motion-safe:animate-backdrop-in [position:fixed] [z-index:10] [inset:0] [display:grid] [place-items:center] [padding:20px] [background:rgba(72,_30,_37,_.5)] [backdrop-filter:blur(3px)]" role="presentation" onMouseDown={(event) => {
-          if (event.target === event.currentTarget && !resetting) setResetTarget(null);
+          if (event.target === event.currentTarget && !resetting) setResetAllOpen(false);
         }}>
           <section
             className="confirmation-modal reset-vote-modal motion-safe:animate-modal-in [width:min(420px,_100%)] [position:relative] [padding:31px] [border-radius:13px] [background:#fff] [box-shadow:0_20px_65px_rgba(81,_35,_40,_.2)] [text-align:center] [&_h2]:[margin:9px_0_9px] [&_h2]:[color:#432d31] [&_h2]:[font:700_20px_'Manrope',_sans-serif] [&_h2]:[letter-spacing:-.7px] [&_>_p]:[max-width:320px] [&_>_p]:[margin:0_auto] [&_>_p]:[color:#79847b] [&_>_p]:[font-size:10px] [&_>_p]:[line-height:1.7] [&_>_p_strong]:[color:#a93646] [border:1px_solid_#f1dfdf] [&_.modal-candidate-avatar]:[color:#a93646] [&_.modal-candidate-avatar]:[background:#fff0f1] [&_.modal-close]:[color:#9c6f74] [&_.modal-close]:[background:#fff4f4] [&_.modal-actions_.primary-button]:[background:linear-gradient(110deg,_#d84c5c,_#bd3548)] [&_.modal-actions_.primary-button:hover:not(:disabled)]:[background:#ad293b] [&_.modal-actions_.primary-button:focus-visible]:[outline-color:#e7a0a7] [&_.secondary-button]:[border-color:#f0dfe0] [&_.secondary-button]:[color:#80585d] [&_.secondary-button:hover]:[border-color:#d98b94] [&_.secondary-button:hover]:[background:#fff8f8] [&_>_p]:[max-width:350px]"
@@ -1694,30 +1806,26 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => Promise<v
             aria-labelledby="reset-vote-title"
           >
             <span className="reset-vote-icon [width:42px] [height:42px] [display:grid] [place-items:center] [margin:0_auto_13px] [border-radius:50%] [color:#a93646] [background:#fff0f1] [font-size:25px]" aria-hidden="true">↺</span>
-            <span className="eyebrow dark-eyebrow [font-size:9px] [font-weight:700] [letter-spacing:1.15px] [color:#849177]">KONFIRMASI RESET SUARA</span>
-            <h2 id="reset-vote-title">Reset pilihan siswa?</h2>
+            <span className="eyebrow dark-eyebrow [font-size:9px] [font-weight:700] [letter-spacing:1.15px] [color:#849177]">KONFIRMASI RESET MENYELURUH</span>
+            <h2 id="reset-vote-title">Reset semua suara?</h2>
             <p>
-              {resetTarget.organizationId === "all" ? (
-                <>Semua suara <strong>{resetTarget.name}</strong> untuk MPK, OSIS, dan KY akan dihapus. Siswa dapat masuk kembali dan memilih ulang dari awal.</>
-              ) : (
-                <>Suara <strong>{resetTarget.name}</strong> untuk {resetTarget.organizationName} akan dihapus dari rekap. Siswa dapat masuk kembali dan memilih ulang.</>
-              )}
+              Seluruh suara MPK, OSIS, dan KY dari <strong>{results?.totalVoters ?? 0} pemilih</strong> akan dihapus permanen. Semua siswa dapat masuk kembali dan memilih ulang dari awal.
             </p>
             {resetError && <p className="form-error reset-dialog-error [margin:-7px_0_10px] [color:#b6473d] [font-size:10px] [margin:12px_0_0]" role="alert">{resetError}</p>}
             <div className="modal-actions [display:grid] [grid-template-columns:1fr_1fr] [gap:9px] [margin-top:22px] [&_button:disabled]:[opacity:.65] [&_button:disabled]:[cursor:wait]">
               <button
                 className="secondary-button [&:focus-visible]:[outline:3px_solid_#b5cd79] [&:focus-visible]:[outline-offset:3px] [height:42px] [border:1px_solid_#e4e8df] [border-radius:7px] [color:#536454] [background:#fff] [font-size:10px] [font-weight:600] [cursor:pointer]"
-                onClick={() => setResetTarget(null)}
+                onClick={() => setResetAllOpen(false)}
                 disabled={resetting}
               >
                 Batal
               </button>
               <button
                 className="primary-button reset-confirm-button [height:44px] [border:0] [border-radius:7px] [display:inline-flex] [align-items:center] [justify-content:center] [gap:14px] [color:#f9faef] [background:#17483b] [font-size:10px] [font-weight:700] [cursor:pointer] [transition:background_.2s,_transform_.2s,_box-shadow_.2s,_opacity_.2s] [&:hover:not(:disabled)]:[background:#225d4b] [&:hover:not(:disabled)]:[transform:translateY(-1px)] [&:active:not(:disabled)]:[transform:translateY(0)_scale(.98)] [&:disabled]:[cursor:wait] [&:focus-visible]:[outline:3px_solid_#b5cd79] [&:focus-visible]:[outline-offset:3px] [&_span]:[font-size:15px] [&_span]:[font-weight:400] [background:#b83243] [&:hover:not(:disabled)]:[background:#9e2939] [&:disabled]:[opacity:.65]"
-                onClick={() => void resetVote()}
+                onClick={() => void resetAllVotes()}
                 disabled={resetting}
               >
-                {resetting ? "Mereset..." : "Ya, reset suara"}
+                {resetting ? "Mereset..." : "Ya, reset semua suara"}
               </button>
             </div>
           </section>
