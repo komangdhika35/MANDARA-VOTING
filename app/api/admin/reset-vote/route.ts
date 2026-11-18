@@ -19,6 +19,46 @@ export async function POST(request: Request) {
     }
 
     if (
+      typeof body === "object" &&
+      body !== null &&
+      "resetAll" in body &&
+      body.resetAll === true
+    ) {
+      const database = getDatabase();
+      let transactionOpen = false;
+      try {
+        database.exec("BEGIN IMMEDIATE");
+        transactionOpen = true;
+
+        const totalVotes = (
+          database.prepare("SELECT COUNT(*) AS total FROM participation").get() as {
+            total: number;
+          }
+        ).total;
+        const totalVoters = (
+          database
+            .prepare("SELECT COUNT(DISTINCT nis) AS total FROM participation")
+            .get() as { total: number }
+        ).total;
+
+        database.prepare("DELETE FROM mpk_ballots").run();
+        database.prepare("DELETE FROM ballots").run();
+        database.prepare("DELETE FROM mpk_choices").run();
+        database.prepare("DELETE FROM voter_choices").run();
+        database.prepare("DELETE FROM participation").run();
+        database.prepare("DELETE FROM sessions").run();
+
+        database.exec("COMMIT");
+        transactionOpen = false;
+
+        return NextResponse.json({ success: true, totalVoters, totalVotes });
+      } catch (error) {
+        if (transactionOpen) database.exec("ROLLBACK");
+        throw error;
+      }
+    }
+
+    if (
       typeof body !== "object" ||
       body === null ||
       !("nis" in body) ||

@@ -59,6 +59,11 @@ export async function GET() {
     const mpkBallotTotal = database
       .prepare("SELECT COUNT(*) AS total FROM mpk_ballots")
       .get() as { total: number };
+    const totalVoters = (
+      database
+        .prepare("SELECT COUNT(DISTINCT nis) AS total FROM participation")
+        .get() as { total: number }
+    ).total;
     const voterRows = database
       .prepare(
         `SELECT voters.nis, voters.name, participation.organization_id,
@@ -178,6 +183,7 @@ export async function GET() {
       organizations,
       voters: [...votersByNis.values()],
       totalVotes: organizations.reduce((total, organization) => total + organization.totalVotes, 0),
+      totalVoters,
     });
   } catch (error) {
     console.error("Gagal memuat rekap suara:", error);

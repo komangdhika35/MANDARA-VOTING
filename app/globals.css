@@ -210,6 +210,27 @@
 }
 
 @layer components {
+  .login-visual .login-school-watermark {
+    position: absolute;
+    right: -64px;
+    bottom: -96px;
+    z-index: 0;
+    width: clamp(280px, 72%, 400px);
+    height: auto;
+    opacity: 0.14;
+    pointer-events: none;
+    user-select: none;
+    filter: saturate(0.9);
+    -webkit-mask-image: radial-gradient(circle at 50% 50%, #000 66%, transparent 86%);
+    mask-image: radial-gradient(circle at 50% 50%, #000 66%, transparent 86%);
+  }
+
+  .login-visual > .eyebrow,
+  .login-visual > .visual-heading {
+    position: relative;
+    z-index: 1;
+  }
+
   .mpk-poster-page .mpk-poster-portrait:not(.pair-poster-portrait) {
     height: 240px !important;
   }
