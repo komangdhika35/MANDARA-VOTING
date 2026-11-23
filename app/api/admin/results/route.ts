@@ -75,7 +75,12 @@ export async function GET() {
          FROM voters
          LEFT JOIN participation ON participation.nis = voters.nis
          WHERE voters.active = 1
-         ORDER BY voters.name COLLATE NOCASE, participation.organization_id`,
+         ORDER BY
+            CASE WHEN voters.nis LIKE 'GUEST-%' THEN 1 ELSE 0 END,
+            CASE WHEN voters.nis LIKE 'GUEST-%'
+              THEN CAST(SUBSTR(voters.name, 9) AS INTEGER) ELSE 0 END,
+            voters.name COLLATE NOCASE,
+            participation.organization_id`,
       )
       .all() as {
       has_mpk_choices: number;

@@ -13,7 +13,9 @@ export async function GET() {
     }
 
     const voter = await getSessionVoter();
-    if (!voter) {
+    // Sesi tamu dari halaman utama hanya berlaku untuk pemungutan suara,
+    // bukan sebagai pengganti login NIS/password di /kelas12.
+    if (!voter || voter.nis.startsWith("GUEST-")) {
       return NextResponse.json({ error: "Sesi login tidak ditemukan." }, { status: 401 });
     }
 
