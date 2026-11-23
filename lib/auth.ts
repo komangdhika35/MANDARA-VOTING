@@ -68,7 +68,8 @@ export async function getSessionVoter() {
       `SELECT voters.nis, voters.name
        FROM sessions
        JOIN voters ON voters.nis = sessions.nis
-       WHERE sessions.token_hash = ? AND sessions.expires_at > ? AND voters.active = 1`,
+       WHERE sessions.token_hash = ? AND sessions.expires_at > ?
+         AND (voters.active = 1 OR voters.nis LIKE 'GUEST-%')`,
     )
     .get(hashToken(token), Math.floor(Date.now() / 1000)) as
     | { nis: string; name: string }

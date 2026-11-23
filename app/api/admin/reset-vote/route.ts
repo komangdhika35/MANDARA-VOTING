@@ -47,6 +47,10 @@ export async function POST(request: Request) {
         database.prepare("DELETE FROM voter_choices").run();
         database.prepare("DELETE FROM participation").run();
         database.prepare("DELETE FROM sessions").run();
+        // Pemilih tamu ikut dihapus agar penomoran "Pemilih 1" dimulai ulang.
+        database.prepare("DELETE FROM voter_ids WHERE nis LIKE 'GUEST-%'").run();
+        database.prepare("DELETE FROM voter_passwords WHERE nis LIKE 'GUEST-%'").run();
+        database.prepare("DELETE FROM voters WHERE nis LIKE 'GUEST-%'").run();
 
         database.exec("COMMIT");
         transactionOpen = false;
