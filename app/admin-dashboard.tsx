@@ -1004,7 +1004,7 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => Promise<v
   });
 
   return (
-    <main className="min-h-screen">
+    <main className="min-h-screen motion-safe:animate-page-in">
       <header className="flex h-[70px] items-center justify-between border-b border-[#e9ebe4] bg-[rgba(255,255,255,.82)] px-8 motion-safe:animate-fade-in min-[1124px]:px-[calc((100vw-1060px)/2)] max-[760px]:h-[62px] max-[760px]:px-5">
         <a className="brand [display:inline-flex] [align-items:center] [gap:10px]" href="#" aria-label="Suara Mandara">
           <Image

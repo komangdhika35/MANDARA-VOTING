@@ -162,59 +162,6 @@ function clearGuestNis(): void {
   }
 }
 
-const mpkPosterPrograms = [
-  {
-    vision: "MPK yang terbuka, aspiratif, dan dekat dengan seluruh siswa.",
-    missions: ["Membuka ruang aspirasi rutin", "Menyampaikan masukan siswa secara transparan"],
-    accent: "#b76b78",
-  },
-  {
-    vision: "Mewujudkan perwakilan kelas yang aktif dan bertanggung jawab.",
-    missions: ["Mengadakan forum perwakilan kelas", "Mengawal tindak lanjut aspirasi"],
-    accent: "#5c8193",
-  },
-  {
-    vision: "Membangun lingkungan sekolah yang inklusif dan kolaboratif.",
-    missions: ["Merangkul ide dari setiap kelas", "Mendorong kegiatan kolaborasi siswa"],
-    accent: "#9b8650",
-  },
-  {
-    vision: "Menjadikan MPK sebagai jembatan komunikasi yang terpercaya.",
-    missions: ["Menyediakan kanal masukan siswa", "Menyampaikan perkembangan secara berkala"],
-    accent: "#63846b",
-  },
-  {
-    vision: "Mendorong budaya sekolah yang partisipatif dan saling menghargai.",
-    missions: ["Mengajak siswa terlibat dalam evaluasi", "Menjaga komunikasi yang santun"],
-    accent: "#b47b50",
-  },
-  {
-    vision: "Mewakili suara siswa dengan jujur, adil, dan konsisten.",
-    missions: ["Mengumpulkan pendapat secara merata", "Membahas aspirasi dengan bertanggung jawab"],
-    accent: "#796a99",
-  },
-  {
-    vision: "Menciptakan perwakilan siswa yang responsif dan terbuka.",
-    missions: ["Menampung masukan melalui pertemuan kelas", "Memberi kabar atas aspirasi yang diterima"],
-    accent: "#a65d64",
-  },
-  {
-    vision: "Menguatkan kerja sama antara siswa, kelas, dan organisasi.",
-    missions: ["Membangun koordinasi antarkelas", "Mendukung program sekolah yang positif"],
-    accent: "#528176",
-  },
-  {
-    vision: "Membawa aspirasi siswa menjadi masukan yang bermanfaat.",
-    missions: ["Mendengar tanpa membeda-bedakan", "Menyusun usulan berdasarkan kebutuhan siswa"],
-    accent: "#8e775c",
-  },
-  {
-    vision: "Mewujudkan MPK yang aktif, tertib, dan dapat dipercaya.",
-    missions: ["Menjalankan tugas perwakilan secara konsisten", "Mendorong evaluasi kegiatan yang terbuka"],
-    accent: "#687b9a",
-  },
-] as const;
-
 function toVoteRecord(organizationIds: OrganizationId[]): VoteRecord {
   const record: VoteRecord = {};
   for (const organizationId of organizationIds) record[organizationId] = true;
@@ -617,6 +564,16 @@ export default function VotingApp({ mode }: { mode: "guest" | "kelas12" }) {
         )
       : undefined;
 
+  // Berubah setiap kali pemilih melangkah ke layar berikutnya (ketua MPK →
+  // wakil MPK → OSIS → KY → selesai). Dipakai sebagai key agar animasi
+  // transisi halaman diputar ulang setiap kali konten berganti.
+  const pageTransitionKey = [
+    isElectionCompletedScreen ? "complete" : "vote",
+    activeOrganization,
+    votedCount,
+    mpkPosterPosition ?? "none",
+  ].join(":");
+
   if (!ready) return <main className="min-h-screen bg-paper" aria-label="Memuat aplikasi" />;
 
   if (!role) {
@@ -712,26 +669,27 @@ export default function VotingApp({ mode }: { mode: "guest" | "kelas12" }) {
                     </div>
                   </div>
                   <p className="login-hint [display:flex] [gap:8px] [margin:12px_0_0] [color:#8d7e7f] [font-size:9px] [line-height:1.5] [&_span]:[color:#cf5261] max-[760px]:[display:none] [@media(max-height:700px)]:[display:none]"><span>✳</span> Gunakan hak pilihmu dengan bijak untuk menentukan pemimpin organisasi kesiswaan.</p>
-                  <div className="login-footer [margin-top:auto] [padding-top:20px] [border-top:1px_solid_#f0f1ec] [display:flex] [justify-content:space-between] [color:#a28f90] [font-size:8px] [gap:10px] max-[420px]:[font-size:7px] [border-color:#f1e9e9] max-[760px]:[margin-top:12px] max-[760px]:[padding-top:10px] [@media(max-height:700px)]:[padding-top:12px]"><span>© 2026 Suara Mandara</span><span className="login-footer-credit">Dikembangkan oleh Dhika Sumarta dan Dean Putra</span></div>
+                  <div className="login-footer [position:relative] [z-index:1] [margin-top:auto] [padding-top:20px] [border-top:1px_solid_#f0f1ec] [display:flex] [justify-content:space-between] [color:#a28f90] [font-size:8px] [gap:10px] max-[420px]:[font-size:7px] [border-color:#f1e9e9] max-[760px]:[margin-top:12px] max-[760px]:[padding-top:10px] [@media(max-height:700px)]:[padding-top:12px]"><span>© 2026 Suara Mandara</span><span className="login-footer-credit">Dikembangkan oleh Dhika Sumarta dan Dean Putra</span></div>
+                  <span className="panel-ring [position:absolute] [right:-24px] [bottom:-34px] [width:96px] [height:96px] [border-radius:50%] [z-index:0] [pointer-events:none] border border-red-200/45" aria-hidden="true" />
+                  <span className="panel-ring [position:absolute] [right:-8px] [bottom:-18px] [width:64px] [height:64px] [border-radius:50%] [z-index:0] [pointer-events:none] border border-red-300/55" aria-hidden="true" />
+                  <span className="panel-ring [position:absolute] [right:8px] [bottom:-4px] [width:36px] [height:36px] [border-radius:50%] [z-index:0] [pointer-events:none] border border-red-300/65" aria-hidden="true" />
                 </div>
               ) : (
                 <>
               <div className="form-topline [display:flex] [justify-content:space-between] [align-items:center] [color:#9a8587] [font-size:8px] [font-weight:700] [letter-spacing:1px]">
-                <span>{isAdminLogin ? "PORTAL ADMIN" : "PORTAL PEMILIH"}</span>
+                <span>PORTAL PEMILIH</span>
                 <span className="secure-label [color:#97565f] [&_span]:[color:#cb5260]"><span>✦</span> SUARA MANDARA</span>
               </div>
               <div className="form-heading [position:relative] [margin-top:36px] [&_>_p]:[margin:13px_0_6px] [&_>_p]:[color:#927d7e] [&_>_p]:[font-size:12px] [&_h2]:[margin:0] [&_h2]:[color:#37282b] [&_h2]:[font:700_29px/1.16_'Manrope',_sans-serif] [&_h2]:[letter-spacing:-1.2px] max-[760px]:[margin-top:18px] [@media(max-height:700px)]:[margin-top:24px] max-[760px]:[&_h2]:[font-size:27px] [&_h2]:[font-family:'Nunito',_'DM_Sans',_sans-serif] [&_h2]:[font-weight:800]">
                 <span className="form-icon [width:25px] [height:25px] [border-radius:8px] [display:grid] [place-items:center] [color:#b63d4d] [background:#fff0f1] [font-size:16px]">↗</span>
-                <p>{isAdminLogin ? "Selamat datang, admin!" : "Selamat datang, pemilih!"}</p>
-                <h2>{isAdminLogin ? "Masuk ke portal admin." : "Mulai dari suaramu."}</h2>
+                <p>Selamat datang, pemilih!</p>
+                <h2>Mulai dari suaramu.</h2>
                 <span className="form-subtitle [display:block] [margin-top:10px] [color:#897a7b] [font-size:11px] [line-height:1.6]">
-                  {isAdminLogin
-                    ? "Masukkan username dan password untuk membuka rekap suara."
-                    : "Masukkan NIS dan password untuk melanjutkan pemilihan."}
+                  Masukkan NIS dan password untuk melanjutkan pemilihan.
                 </span>
               </div>
               <form className="login-form [display:flex] [flex-direction:column] [margin-top:18px] [&_label]:[margin:0_0_7px] [&_label]:[color:#5a4548] [&_label]:[font-size:10px] [&_label]:[font-weight:700] max-[760px]:[margin-top:12px] [@media(max-height:700px)]:[margin-top:12px]" onSubmit={handleLogin}>
-                <label htmlFor="nis">{isAdminLogin ? "Username" : "Nomor Induk Siswa (NIS)"}</label>
+                <label htmlFor="nis">Nomor Induk Siswa (NIS)</label>
                 <div className="input-wrap [height:43px] [display:flex] [align-items:center] [gap:10px] [margin-bottom:12px] [padding:0_12px] [border:1px_solid_#e8ebe4] [border-radius:7px] [background:#fffdfd] [transition:border-color_.2s,_box-shadow_.2s,_transform_.2s] [&:focus-within]:[border-color:#db7a84] [&:focus-within]:[box-shadow:0_0_0_3px_rgba(219,_122,_132,_.13)] [&:focus-within_.input-icon]:[color:#63814d] [&:focus-within_.input-icon]:[transform:scale(1.08)] [&_input]:[width:100%] [&_input]:[padding:0] [&_input]:[border:0] [&_input]:[outline:0] [&_input]:[color:#453337] [&_input]:[background:transparent] [&_input]:[font-size:10px] [&_input::placeholder]:[color:#b7a9aa] [border-color:#eee5e5]">
                   <span className="input-icon nis-icon [color:#a37d80] [font-size:15px]" aria-hidden="true">#</span>
                   <input
@@ -741,7 +699,7 @@ export default function VotingApp({ mode }: { mode: "guest" | "kelas12" }) {
                     inputMode={isAdminLogin ? "text" : "numeric"}
                     autoCapitalize="none"
                     autoComplete="username"
-                    placeholder={isAdminLogin ? "Masukkan admin" : "Masukkan NIS kamu"}
+                    placeholder="Masukkan NIS kamu"
                     value={nis}
                     maxLength={5}
                     onChange={(event) => {
@@ -752,7 +710,7 @@ export default function VotingApp({ mode }: { mode: "guest" | "kelas12" }) {
                     required
                   />
                 </div>
-                <label htmlFor="password">{isAdminLogin ? "Password admin" : "Password pemilih"}</label>
+                <label htmlFor="password">Password pemilih</label>
                 <div className="input-wrap [height:43px] [display:flex] [align-items:center] [gap:10px] [margin-bottom:16px] [padding:0_12px] [border:1px_solid_#e8ebe4] [border-radius:7px] [background:#fffdfd] [transition:border-color_.2s,_box-shadow_.2s,_transform_.2s] [&:focus-within]:[border-color:#db7a84] [&:focus-within]:[box-shadow:0_0_0_3px_rgba(219,_122,_132,_.13)] [&_input]:[width:100%] [&_input]:[padding:0] [&_input]:[border:0] [&_input]:[outline:0] [&_input]:[color:#453337] [&_input]:[background:transparent] [&_input]:[font-size:10px] [&_input::placeholder]:[color:#b7a9aa] [border-color:#eee5e5]">
                   <span className="input-icon lock-icon [color:#a37d80] [font-size:13px]" aria-hidden="true">▣</span>
                   <input
@@ -761,7 +719,7 @@ export default function VotingApp({ mode }: { mode: "guest" | "kelas12" }) {
                     type="password"
                     inputMode={isAdminLogin ? undefined : "numeric"}
                     autoComplete="current-password"
-                    placeholder={isAdminLogin ? "Masukkan password admin" : "Masukkan password"}
+                    placeholder="Masukkan password"
                     value={password}
                     onChange={(event) => setPassword(event.target.value)}
                     maxLength={32}
@@ -771,11 +729,7 @@ export default function VotingApp({ mode }: { mode: "guest" | "kelas12" }) {
                 {loginError && <p className="form-error [margin:-7px_0_10px] [color:#b6473d] [font-size:10px]" role="alert">{loginError}</p>}
                 {appError && <p className="form-error [margin:-7px_0_10px] [color:#b6473d] [font-size:10px]" role="alert">{appError}</p>}
                 <button className="primary-button login-button [height:44px] [border:0] [border-radius:7px] [display:inline-flex] [align-items:center] [justify-content:center] [gap:14px] [color:#f9faef] [background:#17483b] [font-size:10px] [font-weight:700] [cursor:pointer] [transition:background_.2s,_transform_.2s,_box-shadow_.2s,_opacity_.2s] [&:hover:not(:disabled)]:[background:#225d4b] [&:hover:not(:disabled)]:[transform:translateY(-1px)] [&:active:not(:disabled)]:[transform:translateY(0)_scale(.98)] [&:disabled]:[cursor:wait] [&:focus-visible]:[outline:3px_solid_#b5cd79] [&:focus-visible]:[outline-offset:3px] [&_span]:[font-size:15px] [&_span]:[font-weight:400]" type="submit" disabled={isSubmitting}>
-                  {isSubmitting
-                    ? "Memeriksa data..."
-                    : isAdminLogin
-                      ? "Masuk ke halaman admin"
-                      : "Lanjut memilih"} {isSubmitting ? (
+                  {isSubmitting ? "Memeriksa data..." : "Lanjut memilih"} {isSubmitting ? (
                     <span className="button-spinner motion-safe:animate-spin [width:13px] [height:13px] [flex:0_0_auto] [border:2px_solid_rgba(255,255,255,.4)] [border-top-color:currentColor] [border-radius:50%]" aria-hidden="true" />
                   ) : (
                     <span aria-hidden="true">→</span>
@@ -832,7 +786,7 @@ export default function VotingApp({ mode }: { mode: "guest" | "kelas12" }) {
         )}
       </header>
 
-      <div className={`app-content ${isMpkPoster || isPairPoster || isElectionCompletedScreen ? "mpk-poster-content [padding-bottom:125px] max-[760px]:[width:calc(100%_-_36px)] max-[760px]:[padding-bottom:116px] max-[420px]:[padding-bottom:85px]" : ""} ${isPairPoster ? "pair-poster-content [display:flex] [flex-direction:column] [height:calc(100dvh-70px-83px)] [overflow:hidden] [padding-bottom:0] max-[760px]:[height:calc(100dvh-62px-108px)]" : ""}`}>
+      <div key={pageTransitionKey} className={`app-content motion-safe:animate-page-in ${isMpkPoster || isPairPoster || isElectionCompletedScreen ? "mpk-poster-content [padding-bottom:125px] max-[760px]:[width:calc(100%_-_36px)] max-[760px]:[padding-bottom:116px] max-[420px]:[padding-bottom:85px]" : ""} ${isPairPoster ? "pair-poster-content [display:flex] [flex-direction:column] [height:calc(100dvh-70px-83px)] [overflow:hidden] [padding-bottom:0] max-[760px]:[height:calc(100dvh-62px-108px)]" : ""}`}>
         {isMpkPoster ? (
           <section className="mpk-poster-page [padding:42px_0_34px] max-[760px]:[padding-top:24px] min-[1000px]:[padding:10px_0_8px]" aria-labelledby="mpk-poster-title">
             <header className="mpk-poster-heading motion-safe:animate-content-in [position:relative] [margin-bottom:24px] [padding:29px_32px] [border:1px_solid_#f1dfdf] [border-radius:14px] [background:radial-gradient(ellipse_at_92%_10%,_rgba(201,_50,_70,_.1),_transparent_34%),_linear-gradient(120deg,_#fff_20%,_#fff8f8)] [&_.eyebrow]:[color:#a76b70] [&_.live-dot]:[background:#c93246] [&_.live-dot]:[box-shadow:0_0_0_3px_rgba(201,_50,_70,_.12)] [&_h1]:[margin:11px_0_6px] [&_h1]:[color:#37282b] [&_h1]:[font:800_clamp(27px,_4vw,_39px)/1.1_'Nunito',_'DM_Sans',_sans-serif] [&_h1]:[letter-spacing:-1.3px] [&_>_p]:[margin:0] [&_>_p]:[color:#897a7b] [&_>_p]:[font-size:11px] max-[760px]:[padding:23px_20px] max-[760px]:[&_h1]:[max-width:70%] max-[420px]:[padding:20px_14px] max-[420px]:[&_h1]:[max-width:100%] max-[420px]:[&_h1]:[padding-right:0] max-[420px]:[&_h1]:[font-size:27px] min-[1000px]:[flex:0_0_auto] min-[1000px]:[margin-bottom:10px] min-[1000px]:[padding:12px_18px] min-[1000px]:[border-radius:10px] min-[1000px]:[&_h1]:[margin:5px_0_3px] min-[1000px]:[&_h1]:[font-size:23px] min-[1000px]:[&_>_p]:[font-size:9px] min-[1000px]:[&_.mpk-poster-notice]:[display:none] min-[1000px]:[&_.mpk-poster-count]:[top:15px] min-[1000px]:[&_.mpk-poster-count]:[right:18px]">
@@ -850,7 +804,7 @@ export default function VotingApp({ mode }: { mode: "guest" | "kelas12" }) {
               <h1 id="mpk-poster-title">Kenali calon {mpkPosterPositionLabel} MPK</h1>
               <p>Pilih dengan cermat calon yang paling mewakili aspirasi kelasmu.</p>
               <div className="mpk-poster-notice [margin-top:16px] [padding:10px_12px] [border:1px_solid_#f1e2c6] [border-radius:7px] [color:#795a2d] [background:#fffaf0] [font-size:9px] [line-height:1.5]" role="note">
-                Foto atau visi-misi yang belum diatur admin ditampilkan sebagai ilustrasi atau contoh. Hanya calon terdaftar yang dapat dipilih.
+                Foto yang belum diatur admin ditampilkan sebagai ilustrasi. Hanya calon terdaftar yang dapat dipilih.
               </div>
               <span className="mpk-poster-count [position:absolute] [top:31px] [right:32px] [padding:8px_11px] [border:1px_solid_#f0d7d9] [border-radius:20px] [color:#a93646] [background:#fff] [font-size:9px] [font-weight:700] max-[760px]:[top:25px] max-[760px]:[right:18px] max-[760px]:[font-size:8px] max-[420px]:[position:static] max-[420px]:[display:inline-block] max-[420px]:[margin-top:11px]">
                 {mpkPosterCandidates.length} calon terdaftar
@@ -860,12 +814,9 @@ export default function VotingApp({ mode }: { mode: "guest" | "kelas12" }) {
             <div className="mpk-poster-grid [display:grid] [grid-template-columns:repeat(3,_minmax(0,_1fr))] [gap:16px] max-[900px]:[grid-template-columns:repeat(3,_minmax(0,_1fr))] max-[760px]:[grid-template-columns:repeat(2,_minmax(0,_1fr))] max-[760px]:[gap:10px] max-[420px]:[gap:8px] min-[1000px]:[grid-template-columns:repeat(5,_minmax(0,_1fr))] min-[1000px]:[grid-template-rows:repeat(2,_minmax(min-content,_auto))] min-[1000px]:[align-items:stretch] min-[1000px]:[gap:9px]">
               {Array.from({ length: Math.max(10, mpkPosterCandidates.length) }, (_, index) => {
                 const candidate = mpkPosterCandidates[index];
-                const program = mpkPosterPrograms[index % mpkPosterPrograms.length];
                 const candidateName =
                   candidate?.name ??
                   `Calon ${mpkPosterPositionLabel} ${index + 1}`;
-                const vision = candidate?.vision.trim() || "";
-                const mission = candidate?.mission.trim() || "";
                 const isSelected = candidate?.id === selectedCandidate;
                 return (
                   <button
@@ -913,19 +864,6 @@ export default function VotingApp({ mode }: { mode: "guest" | "kelas12" }) {
                       </strong>
                       <span className="[width:24px] [height:2px] [margin-top:5px] [border-radius:2px] [background:#eadcda]" aria-hidden="true" />
                       {!candidate && <span className="mpk-poster-unregistered [margin:4px_0_3px] [color:#a1662a] [font-size:7px] [font-weight:700] [line-height:1.4]">Belum terdaftar oleh admin</span>}
-                      <span className="candidate-profile-block [display:flex] [flex-direction:column] [gap:4px] [margin-top:10px] [padding:7px_0]">
-                        <span className="mpk-poster-copy-label [display:flex] [align-items:center] [gap:5px] [color:#a93646] [font-size:8px] [font-weight:800] [letter-spacing:.8px] [text-transform:uppercase]"><span className="[width:5px] [height:5px] [border-radius:50%] [background:#e5bfc0]" aria-hidden="true" />Visi{vision ? "" : " · Contoh"}</span>
-                        <span className="mpk-poster-vision [color:#4b5a51] [font-size:11px] [line-height:1.5] [overflow-wrap:anywhere] max-[420px]:[font-size:10px] min-[1000px]:[font-size:9px]">{vision || program.vision}</span>
-                      </span>
-                      <span className="candidate-profile-block [display:flex] [flex-direction:column] [gap:4px] [margin-top:6px] [padding:7px_0]">
-                        <span className="mpk-poster-copy-label [display:flex] [align-items:center] [gap:5px] [color:#a93646] [font-size:8px] [font-weight:800] [letter-spacing:.8px] [text-transform:uppercase]"><span className="[width:5px] [height:5px] [border-radius:50%] [background:#e5bfc0]" aria-hidden="true" />Misi{mission ? "" : " · Contoh"}</span>
-                        <span className="mpk-poster-missions [display:grid] [gap:5px] [&_>_span]:[position:relative] [&_>_span]:[padding-left:13px] [&_>_span]:[color:#4b5a51] [&_>_span]:[font-size:10px] [&_>_span]:[line-height:1.5] [&_>_span]:[overflow-wrap:anywhere] [&_>_span::before]:[position:absolute] [&_>_span::before]:[top:0] [&_>_span::before]:[left:0] [&_>_span::before]:[color:#bd3548] [&_>_span::before]:[content:'•'] max-[420px]:[&_>_span]:[font-size:9px] min-[1000px]:[font-size:9px]">
-                          {(mission
-                            ? mission.split(/\n+/).map((item) => item.trim()).filter(Boolean)
-                            : program.missions
-                          ).map((item) => <span key={item}>{item}</span>)}
-                        </span>
-                      </span>
                     </span>
                     <span className={`mpk-poster-select [display:block] [margin:11px_10px_10px] [padding:8px_5px] [border:1px_solid_#eee6e3] [border-radius:6px] [color:#738076] [font-size:8px] [font-weight:700] [text-align:center] max-[420px]:[margin-right:7px] max-[420px]:[margin-left:7px] min-[1000px]:[margin:8px_7px_7px] min-[1000px]:[padding:5px_3px] min-[1000px]:[font-size:7px] ${isSelected ? "[border-color:#bd3548] [color:#fff] [background:#bd3548]" : ""}`}>
                       {isSelected ? "✓ Dipilih" : candidate ? "Pilih calon" : "Belum tersedia"}
