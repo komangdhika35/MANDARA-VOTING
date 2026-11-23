@@ -1,0 +1,1836 @@
+"use client";
+
+import Image from "next/image";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { PointerEvent as ReactPointerEvent } from "react";
+import { createPortal } from "react-dom";
+import type {
+  CandidateConfigurations,
+  ElectionCandidates,
+  MpkMember,
+  OrganizationId,
+  OrganizationLogos,
+} from "@/lib/election";
+
+type CandidateResult = { id: string; name: string; viceName?: string; number?: string; votes: number };
+type PositionResult = {
+  id: "chair" | "vice";
+  title: string;
+  totalVotes: number;
+  candidates: { id: string; name: string; votes: number }[];
+};
+
+type OrganizationResult = {
+  id: string;
+  name: string;
+  fullName: string;
+  totalVotes: number;
+  hasAnyVotes: boolean;
+  candidates: CandidateResult[];
+  positions: PositionResult[];
+  voters: { nis: string; name: string; candidateName?: string }[];
+  abstainers: string[];
+};
+
+type VoterResult = {
+  nis: string;
+  name: string;
+  participatedOrganizations: OrganizationId[];
+  searchIdentifiers: string[];
+  hasMpkChoices: boolean;
+};
+
+type Results = {
+  organizations: OrganizationResult[];
+  voters: VoterResult[];
+  totalVotes: number;
+  totalVoters: number;
+};
+
+function readCandidatePhoto(file: File, subject = "Foto calon"): Promise<string> {
+  if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+    return Promise.reject(new Error(`${subject} harus berformat JPG, PNG, atau WebP.`));
+  }
+  if (file.size > 512 * 1024) {
+    return Promise.reject(new Error(`Ukuran ${subject.toLocaleLowerCase()} maksimal 512 KB.`));
+  }
+
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") resolve(reader.result);
+      else reject(new Error("File foto tidak dapat dibaca."));
+    };
+    reader.onerror = () => reject(reader.error ?? new Error("File foto tidak dapat dibaca."));
+    reader.readAsDataURL(file);
+  });
+}
+
+type PhotoCropVariant = "mpk" | "pair";
+
+function clampNumber(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function createRotatedPhotoCanvas(image: HTMLImageElement, rotation: number) {
+  const isSideways = rotation % 180 !== 0;
+  const canvas = document.createElement("canvas");
+  canvas.width = isSideways ? image.naturalHeight : image.naturalWidth;
+  canvas.height = isSideways ? image.naturalWidth : image.naturalHeight;
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("Tidak dapat memproses rotasi foto.");
+
+  context.translate(canvas.width / 2, canvas.height / 2);
+  context.rotate((rotation * Math.PI) / 180);
+  context.drawImage(image, -image.naturalWidth / 2, -image.naturalHeight / 2);
+  return canvas;
+}
+
+function drawCandidatePhotoCrop(
+  context: CanvasRenderingContext2D,
+  source: CanvasImageSource,
+  sourceWidth: number,
+  sourceHeight: number,
+  targetWidth: number,
+  targetHeight: number,
+  aspectRatio: number,
+  zoom: number,
+  horizontalPosition: number,
+  verticalPosition: number,
+) {
+  const cropWidth = Math.min(sourceWidth, sourceHeight * aspectRatio) / zoom;
+  const cropHeight = cropWidth / aspectRatio;
+  const sourceX = (sourceWidth - cropWidth) * (horizontalPosition / 100);
+  const sourceY = (sourceHeight - cropHeight) * (verticalPosition / 100);
+
+  context.clearRect(0, 0, targetWidth, targetHeight);
+  context.drawImage(
+    source,
+    sourceX,
+    sourceY,
+    cropWidth,
+    cropHeight,
+    0,
+    0,
+    targetWidth,
+    targetHeight,
+  );
+}
+
+function cropCandidatePhoto(
+  photoDataUrl: string,
+  variant: PhotoCropVariant,
+  rotation: number,
+  zoom: number,
+  horizontalPosition: number,
+  verticalPosition: number,
+): Promise<string> {
+  const image = new window.Image();
+  const aspectRatio = variant === "mpk" ? 3 / 4 : 360 / 245;
+
+  return new Promise((resolve, reject) => {
+    image.onload = () => {
+      let rotatedPhoto: HTMLCanvasElement;
+      try {
+        rotatedPhoto = createRotatedPhotoCanvas(image, rotation);
+      } catch (error) {
+        reject(error);
+        return;
+      }
+
+      const croppedPhoto = document.createElement("canvas");
+      croppedPhoto.width = 720;
+      croppedPhoto.height = Math.round(croppedPhoto.width / aspectRatio);
+      const context = croppedPhoto.getContext("2d");
+      if (!context) {
+        reject(new Error("Tidak dapat memproses potongan foto."));
+        return;
+      }
+
+      drawCandidatePhotoCrop(
+        context,
+        rotatedPhoto,
+        rotatedPhoto.width,
+        rotatedPhoto.height,
+        croppedPhoto.width,
+        croppedPhoto.height,
+        aspectRatio,
+        zoom,
+        horizontalPosition,
+        verticalPosition,
+      );
+
+      const encode = (quality: number) =>
+        new Promise<Blob>((resolveBlob, rejectBlob) => {
+          croppedPhoto.toBlob(
+            (blob) => {
+              if (blob) resolveBlob(blob);
+              else rejectBlob(new Error("Hasil potongan foto tidak dapat disimpan."));
+            },
+            "image/jpeg",
+            quality,
+          );
+        });
+
+      void (async () => {
+        try {
+          let blob: Blob | null = null;
+          for (const quality of [0.9, 0.8, 0.7, 0.6, 0.5]) {
+            blob = await encode(quality);
+            if (blob.size <= 512 * 1024) break;
+          }
+          if (!blob || blob.size > 512 * 1024) {
+            throw new Error("Hasil potongan foto melebihi batas 512 KB.");
+          }
+
+          const reader = new FileReader();
+          reader.onload = () => {
+            if (typeof reader.result === "string") resolve(reader.result);
+            else reject(new Error("Hasil potongan foto tidak dapat dibaca."));
+          };
+          reader.onerror = () =>
+            reject(reader.error ?? new Error("Hasil potongan foto tidak dapat dibaca."));
+          reader.readAsDataURL(blob);
+        } catch (cropError) {
+          reject(cropError);
+        }
+      })();
+    };
+    image.onerror = () => reject(new Error("Foto tidak dapat dibuka untuk dipotong."));
+    image.src = photoDataUrl;
+  });
+}
+
+function CandidatePhotoCropEditor({
+  photoDataUrl,
+  alt,
+  variant,
+  onCancel,
+  onApply,
+}: {
+  photoDataUrl: string;
+  alt: string;
+  variant: PhotoCropVariant;
+  onCancel: () => void;
+  onApply: (photoDataUrl: string) => void;
+}) {
+  const previewCanvasRef = useRef<HTMLCanvasElement>(null);
+  const previewFrameRef = useRef<HTMLDivElement>(null);
+  const imageRef = useRef<HTMLImageElement | null>(null);
+  const sourceSizeRef = useRef<{ width: number; height: number } | null>(null);
+  const dragRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    startHorizontal: number;
+    startVertical: number;
+  } | null>(null);
+  const pinchRef = useRef<{ distance: number; zoom: number } | null>(null);
+  const pointersRef = useRef(new Map<number, { x: number; y: number }>());
+  const [zoom, setZoom] = useState(1);
+  const [rotation, setRotation] = useState(0);
+  const [horizontalPosition, setHorizontalPosition] = useState(50);
+  const [verticalPosition, setVerticalPosition] = useState(50);
+  const [imageReady, setImageReady] = useState(false);
+  const [dragging, setDragging] = useState(false);
+  const [savingCrop, setSavingCrop] = useState(false);
+  const [cropError, setCropError] = useState("");
+  const aspectRatio = variant === "mpk" ? 3 / 4 : 360 / 245;
+  const zoomRef = useRef(zoom);
+
+  useEffect(() => {
+    zoomRef.current = zoom;
+  }, [zoom]);
+
+  const reportPreviewError = useCallback((error: unknown) => {
+    setCropError(error instanceof Error ? error.message : "Tidak dapat menampilkan foto.");
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    const image = new window.Image();
+    image.onload = () => {
+      if (!active) return;
+      imageRef.current = image;
+      setImageReady(true);
+      setCropError("");
+    };
+    image.onerror = () => {
+      if (active) setCropError("Foto tidak dapat dibuka untuk diputar.");
+    };
+    image.src = photoDataUrl;
+
+    return () => {
+      active = false;
+    };
+  }, [photoDataUrl]);
+
+  useEffect(() => {
+    const image = imageRef.current;
+    const previewCanvas = previewCanvasRef.current;
+    const context = previewCanvas?.getContext("2d");
+    if (!imageReady || !image || !previewCanvas || !context) return;
+
+    try {
+      const rotatedPhoto = createRotatedPhotoCanvas(image, rotation);
+      sourceSizeRef.current = { width: rotatedPhoto.width, height: rotatedPhoto.height };
+      drawCandidatePhotoCrop(
+        context,
+        rotatedPhoto,
+        rotatedPhoto.width,
+        rotatedPhoto.height,
+        previewCanvas.width,
+        previewCanvas.height,
+        aspectRatio,
+        zoom,
+        horizontalPosition,
+        verticalPosition,
+      );
+    } catch (error) {
+      queueMicrotask(() => reportPreviewError(error));
+    }
+  }, [aspectRatio, horizontalPosition, imageReady, reportPreviewError, rotation, verticalPosition, zoom]);
+
+  useEffect(() => {
+    const frame = previewFrameRef.current;
+    if (!frame || !imageReady || savingCrop) return;
+
+    const handleWheel = (event: WheelEvent) => {
+      event.preventDefault();
+      const factor = Math.exp(-event.deltaY * 0.0014);
+      setZoom((current) => clampNumber(current * factor, 1, 3));
+    };
+
+    frame.addEventListener("wheel", handleWheel, { passive: false });
+    return () => frame.removeEventListener("wheel", handleWheel);
+  }, [imageReady, savingCrop]);
+
+  useEffect(() => {
+    if (!dragging) return;
+
+    const resetDrag = () => {
+      pointersRef.current.clear();
+      pinchRef.current = null;
+      dragRef.current = null;
+      setDragging(false);
+    };
+
+    window.addEventListener("pointerup", resetDrag);
+    window.addEventListener("pointercancel", resetDrag);
+    window.addEventListener("blur", resetDrag);
+    return () => {
+      window.removeEventListener("pointerup", resetDrag);
+      window.removeEventListener("pointercancel", resetDrag);
+      window.removeEventListener("blur", resetDrag);
+    };
+  }, [dragging]);
+
+  function stopDragging() {
+    pointersRef.current.clear();
+    pinchRef.current = null;
+    dragRef.current = null;
+    setDragging(false);
+  }
+
+  function handlePreviewPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
+    if (savingCrop || !imageReady) return;
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+    event.preventDefault();
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch {
+      // Pointer capture tidak tersedia; gestur tetap berjalan lewat event biasa.
+    }
+    pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    const points = [...pointersRef.current.values()];
+
+    if (points.length === 1) {
+      pinchRef.current = null;
+      dragRef.current = {
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        startHorizontal: horizontalPosition,
+        startVertical: verticalPosition,
+      };
+      setDragging(true);
+      return;
+    }
+
+    if (points.length === 2) {
+      dragRef.current = null;
+      pinchRef.current = {
+        distance: Math.max(1, Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y)),
+        zoom: zoomRef.current,
+      };
+      setDragging(true);
+    }
+  }
+
+  function handlePreviewPointerMove(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!pointersRef.current.has(event.pointerId)) return;
+    pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    const points = [...pointersRef.current.values()];
+
+    if (pinchRef.current && points.length >= 2) {
+      const distance = Math.max(
+        1,
+        Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y),
+      );
+      setZoom(clampNumber(pinchRef.current.zoom * (distance / pinchRef.current.distance), 1, 3));
+      return;
+    }
+
+    const drag = dragRef.current;
+    const frame = previewFrameRef.current;
+    const sourceSize = sourceSizeRef.current;
+    if (!drag || drag.pointerId !== event.pointerId || !frame || !sourceSize) return;
+    if (frame.clientWidth === 0 || frame.clientHeight === 0) return;
+
+    const cropWidth = Math.min(sourceSize.width, sourceSize.height * aspectRatio) / zoomRef.current;
+    const cropHeight = cropWidth / aspectRatio;
+    const slackX = sourceSize.width - cropWidth;
+    const slackY = sourceSize.height - cropHeight;
+    const deltaX = event.clientX - drag.startX;
+    const deltaY = event.clientY - drag.startY;
+
+    if (slackX > 0.5) {
+      const movedX = (deltaX / frame.clientWidth) * cropWidth;
+      setHorizontalPosition(clampNumber(drag.startHorizontal - (movedX / slackX) * 100, 0, 100));
+    }
+    if (slackY > 0.5) {
+      const movedY = (deltaY / frame.clientHeight) * cropHeight;
+      setVerticalPosition(clampNumber(drag.startVertical - (movedY / slackY) * 100, 0, 100));
+    }
+  }
+
+  function handlePreviewPointerEnd(event: ReactPointerEvent<HTMLDivElement>) {
+    pointersRef.current.delete(event.pointerId);
+    if (pointersRef.current.size < 2) pinchRef.current = null;
+    if (pointersRef.current.size === 0) stopDragging();
+    else dragRef.current = null;
+
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      try {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      } catch {
+        // Abaikan bila pointer sudah tidak aktif.
+      }
+    }
+  }
+
+  function resetCrop() {
+    setZoom(1);
+    setHorizontalPosition(50);
+    setVerticalPosition(50);
+  }
+
+  async function applyCrop() {
+    setSavingCrop(true);
+    setCropError("");
+    try {
+      const croppedPhoto = await cropCandidatePhoto(
+        photoDataUrl,
+        variant,
+        rotation,
+        zoom,
+        horizontalPosition,
+        verticalPosition,
+      );
+      onApply(croppedPhoto);
+    } catch (error) {
+      setCropError(
+        error instanceof Error ? error.message : "Tidak dapat memotong foto.",
+      );
+      setSavingCrop(false);
+    }
+  }
+
+  if (typeof document === "undefined") return null;
+
+  return createPortal(
+    (
+    <div
+      className="[position:fixed] [inset:0] [z-index:100] [display:grid] [place-items:center] [padding:20px] [background:rgba(22,35,29,.62)]"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="candidate-photo-crop-title"
+    >
+      <section className="[width:min(100%,_460px)] [max-height:calc(100vh_-_40px)] [overflow-y:auto] [padding:20px] [border:1px_solid_#eee6e3] [border-radius:12px] [background:#fff] [box-shadow:0_20px_60px_rgba(0,0,0,.2)]">
+        <div className="[display:flex] [align-items:flex-start] [justify-content:space-between] [gap:12px]">
+          <div>
+            <h2
+              id="candidate-photo-crop-title"
+              className="[margin:0] [color:#27392f] [font:800_17px_'Nunito',_'DM_Sans',_sans-serif]"
+            >
+              Atur potongan foto
+            </h2>
+            <p className="[margin:5px_0_14px] [color:#78827d] [font-size:10px]">
+              Geser foto langsung pada pratinjau. Scroll atau cubit untuk mengubah ukuran.
+            </p>
+          </div>
+          <button
+            type="button"
+            className="[width:30px] [height:30px] [flex:0_0_auto] [border:1px_solid_#e9ebe4] [border-radius:6px] [color:#647168] [background:#fff] [font-size:18px] [cursor:pointer] [&:disabled]:[opacity:.6]"
+            aria-label="Tutup pengaturan potongan foto"
+            disabled={savingCrop}
+            onClick={onCancel}
+          >
+            ×
+          </button>
+        </div>
+        <div
+          ref={previewFrameRef}
+          className={`[position:relative] [width:min(100%,_360px)] [margin:0_auto] [overflow:hidden] [border:1px_solid_#e5e6df] [border-radius:8px] [background:linear-gradient(145deg,_#f8e9e9,_#f2e4d8)] [touch-action:none] [user-select:none] ${dragging ? "[cursor:grabbing]" : "[cursor:grab]"}`}
+          style={{ aspectRatio: String(aspectRatio) }}
+          onPointerDown={handlePreviewPointerDown}
+          onPointerMove={handlePreviewPointerMove}
+          onPointerUp={handlePreviewPointerEnd}
+          onPointerCancel={handlePreviewPointerEnd}
+          onLostPointerCapture={handlePreviewPointerEnd}
+        >
+          <canvas
+            ref={previewCanvasRef}
+            className="[block] [width:100%] [height:100%] [object-fit:contain]"
+            width={720}
+            height={Math.round(720 / aspectRatio)}
+            role="img"
+            aria-label={alt}
+          />
+        </div>
+        <div className="[display:grid] [gap:10px] [margin-top:16px] [&_label]:[display:grid] [&_label]:[gap:5px] [&_label]:[color:#647168] [&_label]:[font-size:9px] [&_label]:[font-weight:700] [&_input]:[width:100%] [&_input]:[accent-color:#a93646] [&_input:disabled]:[opacity:.6]">
+          <div className="[display:flex] [align-items:center] [gap:8px]">
+            <span className="[margin-right:auto] [color:#647168] [font-size:9px] [font-weight:700]">
+              Putar foto · {rotation}°
+            </span>
+            <button
+              type="button"
+              className="[min-height:30px] [padding:0_9px] [border:1px_solid_#eadbdd] [border-radius:5px] [color:#a93646] [background:#fff8f8] [font-size:9px] [font-weight:700] [cursor:pointer] [&:disabled]:[opacity:.6]"
+              aria-label="Putar foto ke kiri 90 derajat"
+              disabled={savingCrop}
+              onClick={() => setRotation((current) => (current + 270) % 360)}
+            >
+              ↶ 90°
+            </button>
+            <button
+              type="button"
+              className="[min-height:30px] [padding:0_9px] [border:1px_solid_#eadbdd] [border-radius:5px] [color:#a93646] [background:#fff8f8] [font-size:9px] [font-weight:700] [cursor:pointer] [&:disabled]:[opacity:.6]"
+              aria-label="Putar foto ke kanan 90 derajat"
+              disabled={savingCrop}
+              onClick={() => setRotation((current) => (current + 90) % 360)}
+            >
+              ↻ 90°
+            </button>
+          </div>
+          <div className="[display:flex] [align-items:center] [gap:8px] [flex-wrap:wrap]">
+            <p className="[flex:1_1_170px] [margin:0] [color:#78827d] [font-size:9px] [line-height:1.5]">
+              Geser foto ke kiri, kanan, atas, atau bawah. Scroll atau cubit untuk mengubah ukuran.
+            </p>
+            <button
+              type="button"
+              className="[min-height:30px] [padding:0_9px] [border:1px_solid_#e5e6df] [border-radius:5px] [color:#647168] [background:#fff] [font-size:9px] [font-weight:700] [cursor:pointer] [&:disabled]:[opacity:.6]"
+              disabled={savingCrop}
+              onClick={resetCrop}
+            >
+              Reset posisi
+            </button>
+          </div>
+        </div>
+        {cropError && (
+          <p className="[margin:12px_0_0] [color:#b6473d] [font-size:9px]" role="alert">
+            {cropError}
+          </p>
+        )}
+        <div className="[display:flex] [justify-content:flex-end] [gap:8px] [margin-top:18px]">
+          <button
+            type="button"
+            className="[min-height:36px] [padding:0_12px] [border:1px_solid_#e5e6df] [border-radius:6px] [color:#647168] [background:#fff] [font-size:9px] [font-weight:700] [cursor:pointer] [&:disabled]:[opacity:.6]"
+            disabled={savingCrop}
+            onClick={onCancel}
+          >
+            Batal
+          </button>
+          <button
+            type="button"
+            className="[min-height:36px] [padding:0_12px] [border:0] [border-radius:6px] [color:#fff] [background:#a93646] [font-size:9px] [font-weight:700] [cursor:pointer] [&:disabled]:[opacity:.6]"
+            disabled={savingCrop || !imageReady}
+            onClick={() => void applyCrop()}
+          >
+            {savingCrop ? "Memotong..." : "Terapkan potongan"}
+          </button>
+        </div>
+      </section>
+    </div>
+    ),
+    document.body,
+  );
+}
+
+function CandidatePhotoPreview({
+  photoDataUrl,
+  alt,
+  variant,
+  disabled,
+  onRemove,
+  onApply,
+}: {
+  photoDataUrl: string;
+  alt: string;
+  variant: "mpk" | "pair";
+  disabled: boolean;
+  onRemove: () => void;
+  onApply: (photoDataUrl: string) => void;
+}) {
+  const [cropOpen, setCropOpen] = useState(false);
+
+  return (
+    <>
+      <div className="mpk-member-photo-preview motion-safe:animate-content-in [display:grid] [justify-items:start] [gap:7px] [margin-top:8px]">
+        <span className="[color:#647168] [font-size:8px] [font-weight:700]">
+          Pratinjau tampilan halaman pemilih
+        </span>
+        <div
+          className={`candidate-photo-preview-frame [position:relative] [display:grid] [overflow:hidden] [place-items:center] [border:1px_solid_#eee6e3] [border-radius:7px] [background:linear-gradient(145deg,_#f8e9e9,_#f2e4d8)] ${
+            variant === "mpk"
+              ? "[width:min(100%,_180px)] [height:240px] max-[760px]:[height:210px] max-[420px]:[height:195px]"
+              : "[width:100%] [height:245px] max-[760px]:[height:205px]"
+          }`}
+        >
+          <Image
+            className="[width:100%] [height:100%] [object-fit:contain]"
+            src={photoDataUrl}
+            alt={alt}
+            width={360}
+            height={240}
+            unoptimized
+          />
+          <span className="candidate-photo-preview-label [position:absolute] [right:7px] [bottom:7px] [padding:4px_6px] [border-radius:4px] [color:#745a59] [background:rgba(255,255,255,.86)] [font-size:6px] [font-weight:800] [letter-spacing:.6px]">
+            FOTO
+          </span>
+        </div>
+        <div className="[display:flex] [flex-wrap:wrap] [gap:7px]">
+          <button
+            type="button"
+            className="[min-height:28px] [padding:0_8px] [border:1px_solid_#eadbdd] [border-radius:5px] [color:#a93646] [background:#fff8f8] [font-size:8px] [font-weight:700] [cursor:pointer] [&:disabled]:[opacity:.6] [&:disabled]:[cursor:wait]"
+            disabled={disabled}
+            onClick={() => setCropOpen(true)}
+          >
+            Atur potongan
+          </button>
+          <button
+            type="button"
+            className="remove-photo-button [min-height:28px] [padding:0_8px] [border:1px_solid_#f0d7d9] [border-radius:5px] [color:#a93646] [background:#fff7f7] [font-size:8px] [cursor:pointer] [&:disabled]:[opacity:.6] [&:disabled]:[cursor:wait]"
+            disabled={disabled}
+            onClick={onRemove}
+          >
+            Hapus foto
+          </button>
+        </div>
+      </div>
+      {cropOpen && (
+        <CandidatePhotoCropEditor
+          photoDataUrl={photoDataUrl}
+          alt={alt}
+          variant={variant}
+          onCancel={() => setCropOpen(false)}
+          onApply={(croppedPhoto) => {
+            onApply(croppedPhoto);
+            setCropOpen(false);
+          }}
+        />
+      )}
+    </>
+  );
+}
+
+export default function AdminDashboard({ onLogout }: { onLogout: () => Promise<void> }) {
+  const [activeAdminPage, setActiveAdminPage] = useState<"results" | "voters" | "candidates">("results");
+  const [results, setResults] = useState<Results | null>(null);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [logoutError, setLogoutError] = useState("");
+  const [resetAllOpen, setResetAllOpen] = useState(false);
+  const [resetting, setResetting] = useState(false);
+  const [resetError, setResetError] = useState("");
+  const [resetMessage, setResetMessage] = useState("");
+  const [voterSearch, setVoterSearch] = useState("");
+  const [voterCategory, setVoterCategory] = useState<"voted" | "not-voted">("voted");
+  const [candidateConfigurations, setCandidateConfigurations] =
+    useState<CandidateConfigurations | null>(null);
+  const [candidateCounts, setCandidateCounts] = useState<Record<"osis" | "ky", number>>({
+    osis: 2,
+    ky: 2,
+  });
+  const [mpkMembers, setMpkMembers] = useState<
+    Record<"chair" | "vice", MpkMember[]> | null
+  >(null);
+  const [organizationLogos, setOrganizationLogos] = useState<OrganizationLogos>({
+    mpk: "",
+    osis: "",
+    ky: "",
+  });
+  const [candidateError, setCandidateError] = useState("");
+  const [candidateMessage, setCandidateMessage] = useState("");
+  const [savingCandidates, setSavingCandidates] = useState(false);
+
+  const loadCandidates = useCallback(async () => {
+    setCandidateError("");
+    try {
+      const response = await fetch("/api/election/candidates", { cache: "no-store" });
+      const data = (await response.json()) as Partial<ElectionCandidates> & { error?: string };
+      if (
+        !response.ok ||
+        !data.organizations ||
+        !data.mpkMembers ||
+        !data.candidateCounts ||
+        !data.organizationLogos
+      ) {
+        throw new Error(data.error ?? "Gagal memuat pasangan calon.");
+      }
+      setCandidateConfigurations(data.organizations);
+      setMpkMembers(data.mpkMembers);
+      setCandidateCounts(data.candidateCounts);
+      setOrganizationLogos(data.organizationLogos);
+    } catch (loadError) {
+      setCandidateError(
+        loadError instanceof Error ? loadError.message : "Tidak dapat memuat pasangan calon.",
+      );
+    }
+  }, []);
+
+  function updateCandidate(
+    organizationId: OrganizationId,
+    candidateId: string,
+    field: "name" | "viceName" | "number" | "photoDataUrl" | "vision" | "mission",
+    value: string,
+  ) {
+    setCandidateConfigurations((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        [organizationId]: current[organizationId].map((candidate) =>
+          candidate.id === candidateId ? { ...candidate, [field]: value } : candidate,
+        ),
+      };
+    });
+    setCandidateMessage("");
+  }
+
+  function updateMpkMember<K extends keyof MpkMember>(
+    memberId: string,
+    field: K,
+    value: MpkMember[K],
+    position?: "chair" | "vice",
+  ) {
+    setMpkMembers((current) => {
+      if (!current) return current;
+      const updatePosition = (candidatePosition: "chair" | "vice") => {
+        const members = current[candidatePosition].map((member) =>
+          member.id === memberId && (field !== "number" || candidatePosition === position)
+            ? { ...member, [field]: value }
+            : member,
+        );
+        if (
+          field === "number" &&
+          candidatePosition === position &&
+          typeof value === "string" &&
+          /^\d{1,3}$/.test(value) &&
+          Number(value) >= 1 &&
+          Number(value) <= 999
+        ) {
+          members.sort(
+            (left, right) =>
+              Number(left.number) - Number(right.number) ||
+              left.name.localeCompare(right.name),
+          );
+        }
+        return members;
+      };
+      return { chair: updatePosition("chair"), vice: updatePosition("vice") };
+    });
+    setCandidateMessage("");
+  }
+
+  function addMpkMember(position: "chair" | "vice") {
+    setMpkMembers((current) => {
+      if (!current) return current;
+      const nextNumber = String(
+        Math.max(0, ...current[position].map((member) => Number(member.number) || 0)) + 1,
+      );
+      return {
+        ...current,
+        [position]: [
+          ...current[position],
+          {
+            id: `mpk-member-${crypto.randomUUID()}`,
+            name: "",
+            number: nextNumber,
+            photoDataUrl: "",
+            vision: "",
+            mission: "",
+          },
+        ],
+      };
+    });
+    setCandidateMessage("");
+  }
+
+  async function handleMpkPhotoChange(memberId: string, file: File) {
+    setCandidateError("");
+    try {
+      const photoDataUrl = await readCandidatePhoto(file);
+      updateMpkMember(memberId, "photoDataUrl", photoDataUrl);
+    } catch (photoError) {
+      setCandidateError(
+        photoError instanceof Error ? photoError.message : "Tidak dapat membaca foto calon.",
+      );
+    }
+  }
+
+  async function handleCandidatePhotoChange(
+    organizationId: OrganizationId,
+    candidateId: string,
+    file: File,
+  ) {
+    setCandidateError("");
+    try {
+      const photoDataUrl = await readCandidatePhoto(file);
+      updateCandidate(organizationId, candidateId, "photoDataUrl", photoDataUrl);
+    } catch (photoError) {
+      setCandidateError(
+        photoError instanceof Error ? photoError.message : "Tidak dapat membaca foto calon.",
+      );
+    }
+  }
+
+  async function handleOrganizationLogoChange(organizationId: OrganizationId, file: File) {
+    setCandidateError("");
+    try {
+      const logoDataUrl = await readCandidatePhoto(file, "Logo organisasi");
+      setOrganizationLogos((current) => ({ ...current, [organizationId]: logoDataUrl }));
+      setCandidateMessage("");
+    } catch (logoError) {
+      setCandidateError(
+        logoError instanceof Error ? logoError.message : "Tidak dapat membaca logo organisasi.",
+      );
+    }
+  }
+
+  function addCandidate(organizationId: "osis" | "ky") {
+    setCandidateConfigurations((current) => {
+      if (!current) return current;
+      const count = candidateCounts[organizationId];
+      const candidateToAdd = current[organizationId][count];
+      if (!candidateToAdd) return current;
+      const usedNumbers = new Set(
+        current[organizationId]
+          .slice(0, count)
+          .map((candidate) => Number(candidate.number)),
+      );
+      let nextNumber = 1;
+      while (usedNumbers.has(nextNumber)) nextNumber += 1;
+      return {
+        ...current,
+        [organizationId]: current[organizationId].map((candidate) =>
+          candidate.id === candidateToAdd.id
+            ? {
+                ...candidate,
+                name: "",
+                viceName: "",
+                number: String(nextNumber),
+                photoDataUrl: "",
+                vision: "",
+                mission: "",
+              }
+            : candidate,
+        ),
+      };
+    });
+    setCandidateCounts((current) => ({
+      ...current,
+      [organizationId]: Math.min(current[organizationId] + 1, 3),
+    }));
+    setCandidateMessage("");
+  }
+
+  function removeCandidate(organizationId: "osis" | "ky") {
+    setCandidateCounts((current) => ({
+      ...current,
+      [organizationId]: Math.max(2, current[organizationId] - 1),
+    }));
+    setCandidateMessage("");
+  }
+
+  async function saveCandidates() {
+    if (!candidateConfigurations || !mpkMembers) return;
+    setSavingCandidates(true);
+    setCandidateError("");
+    setCandidateMessage("");
+    try {
+      const response = await fetch("/api/admin/candidates", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          organizations: {
+            ...candidateConfigurations,
+            osis: candidateConfigurations.osis.slice(0, candidateCounts.osis),
+            ky: candidateConfigurations.ky.slice(0, candidateCounts.ky),
+          },
+          mpkMembers,
+          organizationLogos,
+        }),
+      });
+      const data = (await response.json()) as {
+        organizations?: CandidateConfigurations;
+        mpkMembers?: Record<"chair" | "vice", MpkMember[]>;
+        candidateCounts?: Record<"osis" | "ky", number>;
+        organizationLogos?: OrganizationLogos;
+        error?: string;
+      };
+      if (
+        !response.ok ||
+        !data.organizations ||
+        !data.mpkMembers ||
+        !data.candidateCounts ||
+        !data.organizationLogos
+      ) {
+        throw new Error(data.error ?? "Perubahan pasangan calon belum dapat disimpan.");
+      }
+      setCandidateConfigurations(data.organizations);
+      setMpkMembers(data.mpkMembers);
+      setCandidateCounts(data.candidateCounts);
+      setOrganizationLogos(data.organizationLogos);
+      setCandidateMessage("Perubahan kandidat dan logo berhasil disimpan.");
+      await loadResults();
+    } catch (saveError) {
+      setCandidateError(
+        saveError instanceof Error
+          ? saveError.message
+          : "Tidak dapat menyimpan pasangan calon. Silakan coba lagi.",
+      );
+    } finally {
+      setSavingCandidates(false);
+    }
+  }
+
+  async function handleLogout() {
+    setLogoutError("");
+    try {
+      await onLogout();
+    } catch (logoutFailure) {
+      setLogoutError(
+        logoutFailure instanceof Error ? logoutFailure.message : "Gagal keluar dari aplikasi.",
+      );
+    }
+  }
+
+  const loadResults = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const response = await fetch("/api/admin/results", { cache: "no-store" });
+      const data = (await response.json()) as Results & { error?: string };
+      if (!response.ok) throw new Error(data.error ?? "Gagal memuat rekap suara.");
+      setResults(data);
+    } catch (loadError) {
+      setError(
+        loadError instanceof Error
+          ? loadError.message
+          : "Tidak dapat terhubung ke database.",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  async function resetAllVotes() {
+    setResetting(true);
+    setResetError("");
+    setResetMessage("");
+    try {
+      const response = await fetch("/api/admin/reset-vote", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ resetAll: true }),
+      });
+      const data = (await response.json()) as {
+        error?: string;
+        totalVoters?: number;
+        totalVotes?: number;
+      };
+      if (!response.ok) throw new Error(data.error ?? "Suara belum dapat direset.");
+
+      setResetMessage(
+        `Semua suara (${data.totalVotes ?? 0} pilihan dari ${data.totalVoters ?? 0} pemilih) sudah direset. Siswa dapat masuk kembali dan memilih ulang dari awal.`,
+      );
+      setVoterCategory("not-voted");
+      setVoterSearch("");
+      setResetAllOpen(false);
+      await loadResults();
+    } catch (resetFailure) {
+      setResetError(
+        resetFailure instanceof Error
+          ? resetFailure.message
+          : "Tidak dapat mereset suara. Silakan coba lagi.",
+      );
+    } finally {
+      setResetting(false);
+    }
+  }
+
+  useEffect(() => {
+    let active = true;
+    queueMicrotask(() => {
+      if (active) {
+        void loadResults();
+        void loadCandidates();
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, [loadCandidates, loadResults]);
+
+  const normalizedVoterSearch = voterSearch.trim().toLocaleLowerCase();
+  const filteredVoters = (results?.voters ?? []).filter((voter) => {
+    const matchesSearch =
+      !normalizedVoterSearch ||
+      voter.name.toLocaleLowerCase().includes(normalizedVoterSearch) ||
+      voter.searchIdentifiers.some((identifier) =>
+        identifier.toLocaleLowerCase().includes(normalizedVoterSearch),
+      );
+    const hasVoted = voter.participatedOrganizations.length > 0;
+    return matchesSearch && (voterCategory === "voted" ? hasVoted : !hasVoted);
+  });
+
+  return (
+    <main className="min-h-screen">
+      <header className="flex h-[70px] items-center justify-between border-b border-[#e9ebe4] bg-[rgba(255,255,255,.82)] px-8 motion-safe:animate-fade-in min-[1124px]:px-[calc((100vw-1060px)/2)] max-[760px]:h-[62px] max-[760px]:px-5">
+        <a className="brand [display:inline-flex] [align-items:center] [gap:10px]" href="#" aria-label="Suara Mandara">
+          <Image
+            className="[width:34px] [height:34px] [border-radius:8px] [object-fit:cover]"
+            src="/logo-suara-mandara.png"
+            alt=""
+            width={34}
+            height={34}
+          />
+          <span className="brand-copy [font:800_20px_'Manrope',_sans-serif] [letter-spacing:-1.2px] [&_>_span]:[color:#c93246]">Suara<span>Mandara</span></span>
+        </a>
+        <button className="profile-button [display:flex] [align-items:center] [gap:9px] [padding:0] [border:0] [background:transparent] [text-align:left] [cursor:pointer]" onClick={() => void handleLogout()} title="Keluar">
+          <span className="profile-avatar [width:32px] [height:32px] [border-radius:50%] [display:grid] [place-items:center] [color:#315940] [background:#e6edda] [font-size:10px] [font-weight:700]">AD</span>
+          <span className="profile-name [color:#34473d] [font-size:10px] [font-weight:700] [&_small]:[display:block] [&_small]:[margin-top:2px] [&_small]:[color:#9aa29b] [&_small]:[font-size:8px] [&_small]:[font-weight:400]">Admin<small>Pengelola hasil</small></span>
+          <span className="logout-icon [margin-left:7px] [color:#89958b] [font-size:16px] [transform:rotate(90deg)]" aria-hidden="true">↗</span>
+        </button>
+      </header>
+
+      <div className="mx-auto w-[min(1060px,calc(100%_-_64px))] pb-[30px] max-[760px]:w-[calc(100%_-_36px)]">
+        <section className="admin-welcome motion-safe:animate-rise-in [display:flex] [align-items:center] [justify-content:space-between] [gap:18px] [padding:35px_0_23px] [&_h1]:[margin:8px_0_4px] [&_h1]:[color:#27392f] [&_h1]:[font:800_29px_'Nunito',_'DM_Sans',_sans-serif] [&_h1]:[letter-spacing:-.8px] [&_p]:[margin:0] [&_p]:[color:#838d84] [&_p]:[font-size:11px] max-[760px]:[padding:25px_0_18px] max-[420px]:[&_h1]:[font-size:25px]">
+          <div>
+            <span className="eyebrow dark-eyebrow [font-size:9px] [font-weight:700] [letter-spacing:1.15px] [color:#849177]"><span className="live-dot [width:7px] [height:7px] [display:inline-block] [flex:0_0_auto] [border-radius:50%] [background:#cbe67c] [box-shadow:0_0_0_3px_rgba(203,_230,_124,_.13)]" /> HALAMAN ADMIN</span>
+            <h1>
+              {activeAdminPage === "results"
+                ? "Rekap suara"
+                : activeAdminPage === "voters"
+                  ? "Daftar pemilih"
+                  : "Pengaturan kandidat"}
+            </h1>
+            <p>
+              {activeAdminPage === "results"
+                ? "Ringkasan pilihan untuk setiap organisasi."
+                : activeAdminPage === "voters"
+                  ? "Kelola kehadiran pemilih tanpa melihat pilihan individu."
+                  : "Kelola daftar kandidat untuk setiap organisasi."}
+            </p>
+          </div>
+          {activeAdminPage !== "candidates" && (
+            <button className="secondary-button refresh-button transition-transform duration-200 hover:-translate-y-0.5 active:scale-[.98] motion-reduce:transform-none [&:focus-visible]:[outline:3px_solid_#b5cd79] [&:focus-visible]:[outline-offset:3px] [height:42px] [border:1px_solid_#e4e8df] [border-radius:7px] [color:#536454] [background:#fff] [font-size:10px] [font-weight:600] [cursor:pointer] [display:inline-flex] [align-items:center] [gap:8px] [padding:0_14px] [&:disabled]:[opacity:.65] [&:disabled]:[cursor:wait] [&_span]:[font-size:16px]" onClick={() => void loadResults()} disabled={loading}>
+              <span className={loading ? "motion-safe:animate-spin" : ""} aria-hidden="true">↻</span> {loading ? "Memuat..." : "Perbarui rekap"}
+            </button>
+          )}
+        </section>
+
+        <nav className="admin-page-nav [display:flex] [gap:5px] [margin-bottom:17px] [border-bottom:1px_solid_#e9ebe4] [&_button]:[min-height:40px] [&_button]:[padding:0_15px] [&_button]:[border:0] [&_button]:[border-bottom:2px_solid_transparent] [&_button]:[color:#78837a] [&_button]:[background:transparent] [&_button]:[font:inherit] [&_button]:[font-size:10px] [&_button]:[font-weight:700] [&_button]:[cursor:pointer] [&_button:hover]:[color:#a93646] [&_button.active]:[border-bottom-color:#b83243] [&_button.active]:[color:#a93646] [&_button:focus-visible]:[outline:2px_solid_#d99099] [&_button:focus-visible]:[outline-offset:-2px]" aria-label="Halaman admin">
+          <button
+            id="admin-results-tab"
+            className={`transition-colors duration-200 motion-reduce:transition-none ${activeAdminPage === "results" ? "active" : ""}`}
+            type="button"
+            aria-pressed={activeAdminPage === "results"}
+            onClick={() => setActiveAdminPage("results")}
+          >
+            Rekap suara
+          </button>
+          <button
+            id="admin-voters-tab"
+            className={`transition-colors duration-200 motion-reduce:transition-none ${activeAdminPage === "voters" ? "active" : ""}`}
+            type="button"
+            aria-pressed={activeAdminPage === "voters"}
+            onClick={() => setActiveAdminPage("voters")}
+          >
+            Daftar pemilih
+          </button>
+          <button
+            id="admin-candidates-tab"
+            className={`transition-colors duration-200 motion-reduce:transition-none ${activeAdminPage === "candidates" ? "active" : ""}`}
+            type="button"
+            aria-pressed={activeAdminPage === "candidates"}
+            onClick={() => setActiveAdminPage("candidates")}
+          >
+            Pengaturan kandidat
+          </button>
+        </nav>
+
+        {logoutError && <p className="form-error app-error [margin:-7px_0_10px] [color:#b6473d] [font-size:10px] [width:fit-content] [margin:14px_0_0] [padding:9px_12px] [border:1px_solid_#f0d7d9] [border-radius:6px] [background:#fff7f7]" role="alert">{logoutError}</p>}
+
+        <section
+          id="admin-candidates-panel"
+          key={`candidates-${activeAdminPage}`}
+          className="admin-page-panel motion-safe:animate-content-in [&[hidden]]:[display:none]"
+          aria-labelledby="admin-candidates-tab"
+          hidden={activeAdminPage !== "candidates"}
+        >
+        {candidateError && <p className="form-error app-error [margin:-7px_0_10px] [color:#b6473d] [font-size:10px] [width:fit-content] [margin:14px_0_0] [padding:9px_12px] [border:1px_solid_#f0d7d9] [border-radius:6px] [background:#fff7f7]" role="alert">{candidateError}</p>}
+        {candidateMessage && <p className="admin-reset-notice motion-safe:animate-content-in [margin:12px_0] [padding:10px_12px] [border:1px_solid_#dce9ce] [border-radius:7px] [color:#4a693c] [background:#f5faef] [font-size:10px] [line-height:1.6]" role="status">{candidateMessage}</p>}
+        <section className="candidate-management [margin-top:20px] [padding:20px] [border:1px_solid_#e9ebe4] [border-radius:11px] [background:#fff]" aria-labelledby="candidate-management-title">
+          <div className="candidate-management-heading [display:flex] [align-items:center] [justify-content:space-between] [gap:16px] [&_h2]:[margin:7px_0_4px] [&_h2]:[color:#27392f] [&_h2]:[font:800_20px_'Nunito',_'DM_Sans',_sans-serif] [&_p]:[margin:0] [&_p]:[color:#838d84] [&_p]:[font-size:10px] max-[760px]:[align-items:flex-start] max-[760px]:[flex-direction:column]">
+            <div>
+              <span className="eyebrow dark-eyebrow [font-size:9px] [font-weight:700] [letter-spacing:1.15px] [color:#849177]">PENGATURAN PEMILIHAN</span>
+              <h2 id="candidate-management-title">Atur kandidat</h2>
+              <p>Kelola nama, nomor, foto, visi, dan misi calon MPK, OSIS, dan KY.</p>
+            </div>
+            <button
+              className="primary-button candidate-save-button transition-[transform,background-color] duration-200 hover:-translate-y-0.5 motion-reduce:transform-none [height:44px] [border:0] [border-radius:7px] [display:inline-flex] [align-items:center] [justify-content:center] [gap:14px] [color:#f9faef] [background:#17483b] [font-size:10px] [font-weight:700] [cursor:pointer] [transition:background_.2s,_transform_.2s,_box-shadow_.2s,_opacity_.2s] [&:hover:not(:disabled)]:[background:#225d4b] [&:hover:not(:disabled)]:[transform:translateY(-1px)] [&:active:not(:disabled)]:[transform:translateY(0)_scale(.98)] [&:disabled]:[cursor:wait] [&:focus-visible]:[outline:3px_solid_#b5cd79] [&:focus-visible]:[outline-offset:3px] [&_span]:[font-size:15px] [&_span]:[font-weight:400] [flex:0_0_auto] [padding:0_15px] [background:#b83243] [&:hover:not(:disabled)]:[background:#9e2939] [&:disabled]:[opacity:.65]"
+              onClick={() => void saveCandidates()}
+              disabled={!candidateConfigurations || !mpkMembers || savingCandidates}
+            >
+              {savingCandidates ? <><span className="mr-2 inline-block motion-safe:animate-spin" aria-hidden="true">↻</span>Menyimpan...</> : "Simpan perubahan"}
+            </button>
+          </div>
+          <section
+            className="[margin-top:18px] [padding:14px] [border:1px_solid_#e9ebe4] [border-radius:9px] [background:#fbfcf8]"
+            aria-labelledby="organization-logo-title"
+          >
+            <h3
+              id="organization-logo-title"
+              className="[margin:0_0_4px] [color:#35473d] [font-size:11px] [font-weight:700]"
+            >
+              Logo organisasi
+            </h3>
+            <p className="[margin:0_0_12px] [color:#838d84] [font-size:9px]">
+              Atur logo yang tampil pada halaman pemilih. Format JPG, PNG, atau WebP, maksimal 512 KB.
+            </p>
+            <div className="[display:grid] [grid-template-columns:repeat(3,_minmax(0,_1fr))] [gap:10px] max-[760px]:[grid-template-columns:1fr]">
+              {(["mpk", "osis", "ky"] as const).map((organizationId) => (
+                <article
+                  key={organizationId}
+                  className="[display:grid] [grid-template-columns:64px_minmax(0,_1fr)] [align-items:center] [gap:10px] [padding:10px] [border:1px_solid_#e9ebe4] [border-radius:7px] [background:#fff]"
+                >
+                  <div className="[display:grid] [width:64px] [height:64px] [place-items:center] [overflow:hidden] [border:1px_solid_#edf0e9] [border-radius:8px] [color:#7a8776] [background:#f7f8f2]">
+                    {organizationLogos[organizationId] ? (
+                      <Image
+                        src={organizationLogos[organizationId]}
+                        alt={`Logo ${organizationId.toUpperCase()}`}
+                        width={64}
+                        height={64}
+                        unoptimized
+                        className="[width:100%] [height:100%] [object-fit:contain]"
+                      />
+                    ) : (
+                      <span className="[font:800_19px_'Manrope',_sans-serif]">
+                        {organizationId.toUpperCase()}
+                      </span>
+                    )}
+                  </div>
+                  <div className="[display:grid] [min-width:0] [gap:6px]">
+                    <strong className="[color:#35473d] [font-size:10px]">
+                      {organizationId.toUpperCase()}
+                    </strong>
+                    <label
+                      className="[display:grid] [gap:4px] [color:#647168] [font-size:8px] [font-weight:700]"
+                      htmlFor={`${organizationId}-logo-upload`}
+                    >
+                      Pilih logo
+                      <input
+                        id={`${organizationId}-logo-upload`}
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp"
+                        disabled={savingCandidates}
+                        className="[min-width:0] [color:#78827d] [font-size:8px] [&::file-selector-button]:[margin-right:5px] [&::file-selector-button]:[padding:5px_7px] [&::file-selector-button]:[border:1px_solid_#eadbdd] [&::file-selector-button]:[border-radius:5px] [&::file-selector-button]:[color:#a93646] [&::file-selector-button]:[background:#fff8f8] [&::file-selector-button]:[font:inherit] [&::file-selector-button]:[cursor:pointer]"
+                        onChange={(event) => {
+                          const file = event.target.files?.[0];
+                          event.target.value = "";
+                          if (file) void handleOrganizationLogoChange(organizationId, file);
+                        }}
+                      />
+                    </label>
+                    {organizationLogos[organizationId] && (
+                      <button
+                        type="button"
+                        className="[justify-self:start] [padding:4px_7px] [border:1px_solid_#f0d7d9] [border-radius:5px] [color:#a93646] [background:#fff7f7] [font-size:8px] [cursor:pointer] [&:disabled]:[opacity:.6]"
+                        disabled={savingCandidates}
+                        onClick={() => {
+                          setOrganizationLogos((current) => ({
+                            ...current,
+                            [organizationId]: "",
+                          }));
+                          setCandidateMessage("");
+                        }}
+                      >
+                        Hapus logo
+                      </button>
+                    )}
+                  </div>
+                </article>
+              ))}
+            </div>
+          </section>
+          <div className="candidate-management-grid [display:grid] [grid-template-columns:repeat(3,_minmax(0,_1fr))] [gap:12px] [margin-top:17px] max-[760px]:[grid-template-columns:1fr]">
+            {mpkMembers && (
+              <article className="candidate-management-card motion-safe:animate-content-in [min-width:0] [padding:14px] [border:1px_solid_#f0e9e7] [border-radius:9px] [background:#fffdfd] [&_h3]:[margin:0_0_12px] [&_h3]:[color:#a93646] [&_h3]:[font-size:12px]" key="mpk">
+                <h3>MPK · Daftar Calon per Jabatan</h3>
+                {(results?.organizations.find((organization) => organization.id === "mpk")
+                  ?.hasAnyVotes ?? false) && (
+                  <p className="candidate-locked-note [margin:-4px_0_10px] [color:#795a2d] [font-size:9px] [line-height:1.5]">
+                    Nama dan daftar calon dikunci setelah suara tercatat. Foto, visi, dan misi tetap dapat diperbarui.
+                  </p>
+                )}
+                {(["chair", "vice"] as const).map((position) => {
+                  const positionTitle =
+                    position === "chair" ? "Calon Ketua MPK · Kelas 11" : "Calon Wakil MPK · Kelas 10";
+                  return (
+                    <section
+                      className="mpk-admin-category motion-safe:animate-content-in"
+                      key={position}
+                      style={{ animationDelay: position === "chair" ? "70ms" : "140ms" }}
+                    >
+                      <h4>{positionTitle}</h4>
+                      {mpkMembers[position].map((member, index) => (
+                        <article
+                          className="mpk-member-editor motion-safe:animate-poster-in transition-[transform,box-shadow] duration-200 hover:-translate-y-0.5 motion-reduce:animate-none motion-reduce:transform-none [margin:10px_0] [padding:10px] [border:1px_solid_#f0e9e7] [border-radius:8px] [background:#fff]"
+                          key={`${position}-${member.id}`}
+                          style={{ animationDelay: `${Math.min(index, 7) * 45}ms` }}
+                        >
+                          <div className="[display:grid] [grid-template-columns:90px_minmax(0,_1fr)_auto] [align-items:end] [gap:8px] [margin:8px_0] [&_label]:[display:grid] [&_label]:[gap:4px] [&_label]:[color:#647168] [&_label]:[font-size:8px] [&_label]:[font-weight:700] [&_input]:[width:100%] [&_input]:[min-width:0] [&_input]:[height:34px] [&_input]:[padding:0_9px] [&_input]:[border:1px_solid_#e5e6df] [&_input]:[border-radius:6px] [&_input]:[color:#34483e] [&_input]:[background:#fff] [&_input]:[font:inherit] [&_input]:[font-size:10px] [&_input:focus]:[border-color:#b83243] [&_input:focus]:[outline:2px_solid_rgba(184,_50,_67,_.12)] [&_input:disabled]:[opacity:.6] [&_select]:[width:100%] [&_select]:[min-width:0] [&_select]:[height:34px] [&_select]:[padding:0_8px] [&_select]:[border:1px_solid_#e5e6df] [&_select]:[border-radius:6px] [&_select]:[color:#34483e] [&_select]:[background:#fff] [&_select]:[font:inherit] [&_select]:[font-size:10px] [&_select:focus]:[border-color:#b83243] [&_select:focus]:[outline:2px_solid_rgba(184,_50,_67,_.12)] [&_select:disabled]:[opacity:.6]">
+                            <label
+                              htmlFor={`${position}-${member.id}-number`}
+                              style={{ gridColumn: "1 / -1" }}
+                            >
+                              Nomor calon
+                              <input
+                                id={`${position}-${member.id}-number`}
+                                type="number"
+                                min={1}
+                                max={999}
+                                placeholder="1"
+                                value={member.number}
+                                disabled={savingCandidates}
+                                onChange={(event) =>
+                                  updateMpkMember(member.id, "number", event.target.value, position)
+                                }
+                              />
+                            </label>
+                          </div>
+                          <div className="mpk-member-edit-row [display:flex] [gap:7px] [margin:8px_0] [&_input]:[min-width:0] [&_input]:[flex:1] [&_input]:[height:34px] [&_input]:[padding:0_9px] [&_input]:[border:1px_solid_#e5e6df] [&_input]:[border-radius:6px] [&_input]:[color:#34483e] [&_input]:[background:#fff] [&_input]:[font:inherit] [&_input]:[font-size:10px] [&_input:focus]:[border-color:#b83243] [&_input:focus]:[outline:2px_solid_rgba(184,_50,_67,_.12)] [&_input:disabled]:[opacity:.6]">
+                            <label className="sr-only [position:absolute] [width:1px] [height:1px] [overflow:hidden] [clip:rect(0,_0,_0,_0)] [white-space:nowrap] [clip-path:inset(50%)]" htmlFor={`${position}-${member.id}-name`}>
+                              Nama {positionTitle}
+                            </label>
+                            <input
+                              id={`${position}-${member.id}-name`}
+                              maxLength={80}
+                              value={member.name}
+                              disabled={
+                                savingCandidates ||
+                                (results?.organizations.find((organization) => organization.id === "mpk")
+                                  ?.hasAnyVotes ?? false)
+                              }
+                              onChange={(event) =>
+                                updateMpkMember(member.id, "name", event.target.value)
+                              }
+                            />
+                            <button
+                              type="button"
+                              className="remove-member-button [width:34px] [flex:0_0_auto] [border:1px_solid_#f0d7d9] [border-radius:6px] [color:#ae3443] [background:#fff7f7] [font-size:18px] [cursor:pointer] [&:disabled]:[opacity:.6] [&:disabled]:[cursor:not-allowed]"
+                              aria-label={`Hapus ${member.name} dari ${positionTitle}`}
+                              disabled={
+                                savingCandidates ||
+                                (results?.organizations.find(
+                                  (organization) => organization.id === "mpk",
+                                )?.hasAnyVotes ?? false) ||
+                                mpkMembers[position].length <= 1
+                              }
+                              onClick={() =>
+                                setMpkMembers((current) =>
+                                  current
+                                    ? {
+                                        ...current,
+                                        [position]: current[position].filter(
+                                          (item) => item.id !== member.id,
+                                        ),
+                                      }
+                                    : null,
+                                )
+                              }
+                            >
+                              ×
+                            </button>
+                          </div>
+                          <div className="mpk-member-profile [display:grid] [gap:10px] [&_label]:[display:grid] [&_label]:[gap:5px] [&_label]:[color:#647168] [&_label]:[font-size:8px] [&_label]:[font-weight:700] [&_label_small]:[margin-left:3px] [&_label_small]:[color:#929a91] [&_label_small]:[font-size:7px] [&_label_small]:[font-weight:500] [&_input[type='file']]:[width:100%] [&_input[type='file']]:[min-width:0] [&_input[type='file']]:[color:#78827d] [&_input[type='file']]:[font-size:8px] [&_input[type='file']::file-selector-button]:[margin-right:7px] [&_input[type='file']::file-selector-button]:[padding:6px_8px] [&_input[type='file']::file-selector-button]:[border:1px_solid_#eadbdd] [&_input[type='file']::file-selector-button]:[border-radius:5px] [&_input[type='file']::file-selector-button]:[color:#a93646] [&_input[type='file']::file-selector-button]:[background:#fff8f8] [&_input[type='file']::file-selector-button]:[font:inherit] [&_input[type='file']::file-selector-button]:[cursor:pointer] [&_textarea]:[width:100%] [&_textarea]:[min-width:0] [&_textarea]:[resize:vertical] [&_textarea]:[padding:8px] [&_textarea]:[border:1px_solid_#e5e6df] [&_textarea]:[border-radius:6px] [&_textarea]:[color:#34483e] [&_textarea]:[background:#fff] [&_textarea]:[font:inherit] [&_textarea]:[font-size:9px] [&_textarea]:[line-height:1.5] [&_textarea:focus]:[border-color:#b83243] [&_textarea:focus]:[outline:2px_solid_rgba(184,_50,_67,_.12)] [&_textarea:disabled]:[opacity:.6]">
+                            <div className="mpk-member-photo-field">
+                              <label htmlFor={`${position}-${member.id}-photo`}>
+                                Foto calon <small>JPG, PNG, WebP · maks. 512 KB</small>
+                              </label>
+                              <input
+                                id={`${position}-${member.id}-photo`}
+                                type="file"
+                                accept="image/jpeg,image/png,image/webp"
+                                disabled={savingCandidates}
+                                onChange={(event) => {
+                                  const file = event.target.files?.[0];
+                                  event.target.value = "";
+                                  if (file) void handleMpkPhotoChange(member.id, file);
+                                }}
+                              />
+                              {member.photoDataUrl && (
+                                <CandidatePhotoPreview
+                                  photoDataUrl={member.photoDataUrl}
+                                  alt={`Foto ${member.name}`}
+                                  variant="mpk"
+                                  disabled={savingCandidates}
+                                  onRemove={() => updateMpkMember(member.id, "photoDataUrl", "")}
+                                  onApply={(photoDataUrl) =>
+                                    updateMpkMember(member.id, "photoDataUrl", photoDataUrl)
+                                  }
+                                />
+                              )}
+                            </div>
+                            <label className="mpk-member-text-field" htmlFor={`${position}-${member.id}-vision`}>
+                              Visi
+                              <textarea
+                                id={`${position}-${member.id}-vision`}
+                                maxLength={500}
+                                rows={3}
+                                value={member.vision}
+                                disabled={savingCandidates}
+                                placeholder="Tuliskan visi calon"
+                                onChange={(event) =>
+                                  updateMpkMember(member.id, "vision", event.target.value)
+                                }
+                              />
+                            </label>
+                            <label className="mpk-member-text-field" htmlFor={`${position}-${member.id}-mission`}>
+                              Misi
+                              <textarea
+                                id={`${position}-${member.id}-mission`}
+                                maxLength={1200}
+                                rows={4}
+                                value={member.mission}
+                                disabled={savingCandidates}
+                                placeholder="Tuliskan misi calon"
+                                onChange={(event) =>
+                                  updateMpkMember(member.id, "mission", event.target.value)
+                                }
+                              />
+                            </label>
+                          </div>
+                        </article>
+                      ))}
+                      <button
+                        type="button"
+                        className="add-member-button [width:100%] [min-height:34px] [margin-top:7px] [border:1px_dashed_#d8b8ba] [border-radius:6px] [color:#a93646] [background:#fffafa] [font-size:9px] [font-weight:700] [cursor:pointer] [&:disabled]:[opacity:.6] [&:disabled]:[cursor:not-allowed]"
+                        disabled={
+                          savingCandidates ||
+                          (results?.organizations.find((organization) => organization.id === "mpk")
+                            ?.hasAnyVotes ?? false) ||
+                          (position === "chair" && mpkMembers.chair.length >= 10) ||
+                          mpkMembers.chair.length + mpkMembers.vice.length >= 200
+                        }
+                        onClick={() => addMpkMember(position)}
+                      >
+                        + Tambah calon {position === "chair" ? "ketua" : "wakil"}
+                      </button>
+                    </section>
+                  );
+                })}
+              </article>
+            )}
+            {candidateConfigurations &&
+              (["osis", "ky"] as const).map((organizationId, organizationIndex) => {
+                const hasVotes = (results?.organizations.find(
+                  (organization) => organization.id === organizationId,
+                )?.totalVotes ?? 0) > 0;
+                return (
+                  <article
+                    className="candidate-management-card motion-safe:animate-content-in [min-width:0] [padding:14px] [border:1px_solid_#f0e9e7] [border-radius:9px] [background:#fffdfd] [&_h3]:[margin:0_0_12px] [&_h3]:[color:#a93646] [&_h3]:[font-size:12px]"
+                    key={organizationId}
+                    style={{ animationDelay: `${(organizationIndex + 1) * 90}ms` }}
+                  >
+                    <h3>{organizationId.toUpperCase()}</h3>
+                    {hasVotes && (
+                      <p className="candidate-locked-note [margin:-4px_0_10px] [color:#795a2d] [font-size:9px] [line-height:1.5]">
+                        Nama dan nomor dikunci setelah suara tercatat. Foto, visi, dan misi tetap dapat diperbarui.
+                      </p>
+                    )}
+                    {candidateConfigurations[organizationId]
+                      .slice(0, candidateCounts[organizationId])
+                      .sort((left, right) => Number(left.number) - Number(right.number))
+                      .map((candidate, index) => (
+                      <fieldset
+                        className="candidate-edit-fields motion-safe:animate-poster-in [display:grid] [gap:7px] [margin:0] [padding:12px_0] [border:0] [border-top:1px_solid_#f1ece9] [&_legend]:[padding:0_6px_0_0] [&_legend]:[color:#647168] [&_legend]:[font-size:9px] [&_legend]:[font-weight:700] [&_label]:[color:#647168] [&_label]:[font-size:8px] [&_label]:[font-weight:700] [&_input]:[width:100%] [&_input]:[min-width:0] [&_input]:[height:34px] [&_input]:[padding:0_9px] [&_input]:[border:1px_solid_#e5e6df] [&_input]:[border-radius:6px] [&_input]:[color:#34483e] [&_input]:[background:#fff] [&_input]:[font:inherit] [&_input]:[font-size:10px] [&_input:focus]:[border-color:#b83243] [&_input:focus]:[outline:2px_solid_rgba(184,_50,_67,_.12)] [&_input:last-child]:[max-width:90px] [&_textarea]:[width:100%] [&_textarea]:[min-width:0] [&_textarea]:[resize:vertical] [&_textarea]:[padding:8px_9px] [&_textarea]:[border:1px_solid_#e5e6df] [&_textarea]:[border-radius:6px] [&_textarea]:[color:#34483e] [&_textarea]:[background:#fff] [&_textarea]:[font:inherit] [&_textarea]:[font-size:9px] [&_textarea]:[line-height:1.5] [&_textarea:focus]:[border-color:#b83243] [&_textarea:focus]:[outline:2px_solid_rgba(184,_50,_67,_.12)] [&_textarea:disabled]:[opacity:.6] [&_input[type='file']]:[height:auto] [&_input[type='file']]:[padding:6px] [&_input[type='file']]:[font-size:8px] [&_input[type='file']::file-selector-button]:[margin-right:7px] [&_input[type='file']::file-selector-button]:[padding:6px_8px] [&_input[type='file']::file-selector-button]:[border:1px_solid_#eadbdd] [&_input[type='file']::file-selector-button]:[border-radius:5px] [&_input[type='file']::file-selector-button]:[color:#a93646] [&_input[type='file']::file-selector-button]:[background:#fff8f8] [&_input[type='file']::file-selector-button]:[font:inherit] [&_input[type='file']::file-selector-button]:[cursor:pointer] [&_>_label_small]:[margin-left:3px] [&_>_label_small]:[color:#929a91] [&_>_label_small]:[font-size:7px] [&_>_label_small]:[font-weight:500]"
+                        key={candidate.id}
+                        style={{ animationDelay: `${(organizationIndex * 2 + index) * 75}ms` }}
+                      >
+                        <legend>Paslon {index + 1}</legend>
+                        {index >= 2 && (
+                          <button
+                            type="button"
+                            className="[justify-self:start] [padding:5px_8px] [border:1px_solid_#f0d7d9] [border-radius:5px] [color:#a93646] [background:#fff7f7] [font-size:8px] [font-weight:700] [cursor:pointer] [&:disabled]:[opacity:.6] [&:disabled]:[cursor:not-allowed]"
+                            disabled={savingCandidates || hasVotes}
+                            onClick={() => removeCandidate(organizationId)}
+                          >
+                            Hapus paslon
+                          </button>
+                        )}
+                        <label htmlFor={`${candidate.id}-name`}>Nama calon ketua</label>
+                        <input
+                          id={`${candidate.id}-name`}
+                          maxLength={80}
+                          value={candidate.name}
+                          disabled={savingCandidates || hasVotes}
+                          onChange={(event) =>
+                            updateCandidate(
+                              organizationId,
+                              candidate.id,
+                              "name",
+                              event.target.value,
+                            )
+                          }
+                        />
+                        <label htmlFor={`${candidate.id}-vice`}>Nama calon wakil ketua</label>
+                        <input
+                          id={`${candidate.id}-vice`}
+                          maxLength={80}
+                          value={candidate.viceName}
+                          disabled={savingCandidates || hasVotes}
+                          onChange={(event) =>
+                            updateCandidate(
+                              organizationId,
+                              candidate.id,
+                              "viceName",
+                              event.target.value,
+                            )
+                          }
+                        />
+                        <label htmlFor={`${candidate.id}-number`}>Nomor paslon (1-99)</label>
+                        <input
+                          id={`${candidate.id}-number`}
+                          type="number"
+                          min={1}
+                          max={99}
+                          value={candidate.number}
+                          disabled={savingCandidates || hasVotes}
+                          onChange={(event) =>
+                            updateCandidate(
+                              organizationId,
+                              candidate.id,
+                              "number",
+                              event.target.value,
+                            )
+                          }
+                        />
+                        <label htmlFor={`${candidate.id}-photo`}>
+                          Foto pasangan <small>JPG, PNG, WebP · maks. 512 KB</small>
+                        </label>
+                        <input
+                          id={`${candidate.id}-photo`}
+                          type="file"
+                          accept="image/jpeg,image/png,image/webp"
+                          disabled={savingCandidates}
+                          onChange={(event) => {
+                            const file = event.target.files?.[0];
+                            event.target.value = "";
+                            if (file) {
+                              void handleCandidatePhotoChange(organizationId, candidate.id, file);
+                            }
+                          }}
+                        />
+                        {candidate.photoDataUrl && (
+                          <CandidatePhotoPreview
+                            photoDataUrl={candidate.photoDataUrl}
+                            alt={`Foto pasangan ${candidate.name} dan ${candidate.viceName}`}
+                            variant="pair"
+                            disabled={savingCandidates}
+                            onRemove={() =>
+                              updateCandidate(organizationId, candidate.id, "photoDataUrl", "")
+                            }
+                            onApply={(photoDataUrl) =>
+                              updateCandidate(
+                                organizationId,
+                                candidate.id,
+                                "photoDataUrl",
+                                photoDataUrl,
+                              )
+                            }
+                          />
+                        )}
+                        <label htmlFor={`${candidate.id}-vision`}>Visi</label>
+                        <textarea
+                          id={`${candidate.id}-vision`}
+                          maxLength={500}
+                          rows={3}
+                          value={candidate.vision}
+                          disabled={savingCandidates}
+                          placeholder="Tuliskan visi pasangan"
+                          onChange={(event) =>
+                            updateCandidate(
+                              organizationId,
+                              candidate.id,
+                              "vision",
+                              event.target.value,
+                            )
+                          }
+                        />
+                        <label htmlFor={`${candidate.id}-mission`}>Misi</label>
+                        <textarea
+                          id={`${candidate.id}-mission`}
+                          maxLength={1200}
+                          rows={4}
+                          value={candidate.mission}
+                          disabled={savingCandidates}
+                          placeholder="Tuliskan misi pasangan"
+                          onChange={(event) =>
+                            updateCandidate(
+                              organizationId,
+                              candidate.id,
+                              "mission",
+                              event.target.value,
+                            )
+                          }
+                        />
+                      </fieldset>
+                    ))}
+                    <button
+                      type="button"
+                      className="add-member-button [width:100%] [min-height:34px] [margin-top:7px] [border:1px_dashed_#d8b8ba] [border-radius:6px] [color:#a93646] [background:#fffafa] [font-size:9px] [font-weight:700] [cursor:pointer] [&:disabled]:[opacity:.6] [&:disabled]:[cursor:not-allowed]"
+                      disabled={
+                        savingCandidates ||
+                        hasVotes ||
+                        candidateCounts[organizationId] >=
+                          candidateConfigurations[organizationId].length
+                      }
+                      onClick={() => addCandidate(organizationId)}
+                    >
+                      + Tambah paslon {organizationId.toUpperCase()}
+                    </button>
+                  </article>
+                );
+              })}
+          </div>
+        </section>
+        </section>
+
+        <section
+          id="admin-voters-panel"
+          key={`voters-${activeAdminPage}`}
+          className="admin-page-panel motion-safe:animate-content-in [&[hidden]]:[display:none]"
+          aria-labelledby="admin-voters-tab"
+          hidden={activeAdminPage !== "voters"}
+        >
+          {error && <p className="form-error app-error [margin:-7px_0_10px] [color:#b6473d] [font-size:10px] [width:fit-content] [margin:14px_0_0] [padding:9px_12px] [border:1px_solid_#f0d7d9] [border-radius:6px] [background:#fff7f7]" role="alert">{error}</p>}
+          {resetError && <p className="form-error app-error [margin:-7px_0_10px] [color:#b6473d] [font-size:10px] [width:fit-content] [margin:14px_0_0] [padding:9px_12px] [border:1px_solid_#f0d7d9] [border-radius:6px] [background:#fff7f7]" role="alert">{resetError}</p>}
+          {resetMessage && <p className="admin-reset-notice [margin:12px_0] [padding:10px_12px] [border:1px_solid_#dce9ce] [border-radius:7px] [color:#4a693c] [background:#f5faef] [font-size:10px] [line-height:1.6]" role="status">{resetMessage}</p>}
+          <div className="candidate-management-heading [display:flex] [align-items:center] [justify-content:space-between] [gap:16px] [padding:10px_0_16px] [&_h2]:[margin:7px_0_4px] [&_h2]:[color:#27392f] [&_h2]:[font:800_20px_'Nunito',_'DM_Sans',_sans-serif] [&_p]:[margin:0] [&_p]:[color:#838d84] [&_p]:[font-size:10px] max-[760px]:[align-items:flex-start] max-[760px]:[flex-direction:column]">
+            <div>
+              <span className="eyebrow dark-eyebrow [font-size:9px] [font-weight:700] [letter-spacing:1.15px] [color:#849177]">ADMINISTRASI PEMILIHAN</span>
+              <h2>Daftar pemilih</h2>
+                  <p>Cari pemilih berdasarkan nama atau NIS.</p>
+            </div>
+            <button
+              type="button"
+              className="reset-all-votes-button [min-height:36px] [flex:0_0_auto] [padding:0_13px] [border:1px_solid_#f0d7d9] [border-radius:6px] [color:#ae3443] [background:#fff7f7] [font-size:9px] [font-weight:700] [cursor:pointer] [&:hover:not(:disabled)]:[border-color:#dfabb0] [&:hover:not(:disabled)]:[background:#ffeff0] [&:disabled]:[opacity:.55] [&:disabled]:[cursor:not-allowed]"
+              disabled={resetting || loading}
+              onClick={() => {
+                setResetError("");
+                setResetMessage("");
+                setResetAllOpen(true);
+              }}
+            >
+              Reset semua suara
+            </button>
+          </div>
+              <div className="[display:flex] [align-items:center] [justify-content:space-between] [gap:12px] [margin-bottom:12px] max-[600px]:[align-items:stretch] max-[600px]:[flex-direction:column]">
+                <label className="[position:relative] [flex:1] [max-width:420px] max-[600px]:[max-width:none]">
+                  <span className="sr-only">Cari nama atau NIS pemilih</span>
+                  <input
+                    type="search"
+                    value={voterSearch}
+                    onChange={(event) => setVoterSearch(event.target.value)}
+                    placeholder="Cari nama atau NIS..."
+                    className="[width:100%] [height:40px] [padding:0_12px] [border:1px_solid_#e4e8df] [border-radius:7px] [color:#34483e] [background:#fff] [font:inherit] [font-size:10px] [&:focus]:[border-color:#b83243] [&:focus]:[outline:2px_solid_rgba(184,_50,_67,_.12)]"
+                  />
+                </label>
+                <div className="[display:flex] [gap:4px] [padding:3px] [border:1px_solid_#e9ebe4] [border-radius:7px] [background:#fff]" role="group" aria-label="Filter status pemilih">
+                  <button
+                    type="button"
+                    aria-pressed={voterCategory === "voted"}
+                    onClick={() => setVoterCategory("voted")}
+                    className={`[min-height:32px] [padding:0_10px] [border:0] [border-radius:5px] [font-size:9px] [font-weight:700] [cursor:pointer] ${voterCategory === "voted" ? "[color:#a93646] [background:#fff0f1]" : "[color:#78837a] [background:transparent]"}`}
+                  >Sudah memilih</button>
+                  <button
+                    type="button"
+                    aria-pressed={voterCategory === "not-voted"}
+                    onClick={() => setVoterCategory("not-voted")}
+                    className={`[min-height:32px] [padding:0_10px] [border:0] [border-radius:5px] [font-size:9px] [font-weight:700] [cursor:pointer] ${voterCategory === "not-voted" ? "[color:#a93646] [background:#fff0f1]" : "[color:#78837a] [background:transparent]"}`}
+                  >Belum memilih</button>
+                </div>
+              </div>
+              <section className="[overflow:hidden] [border:1px_solid_#e9ebe4] [border-radius:8px] [background:#fff]" aria-label="Daftar status pemilih" aria-busy={loading}>
+                <div className="[display:flex] [align-items:center] [justify-content:space-between] [gap:12px] [padding:10px_14px] [border-bottom:1px_solid_#f0f0eb] [color:#939b92] [font-size:9px]">
+                  <span>{filteredVoters.length} dari {results?.voters.length ?? 0} pemilih</span>
+                  <span>Pilihan individu tidak ditampilkan</span>
+                </div>
+                {filteredVoters.length > 0 ? (
+                  <ul className="[margin:0] [padding:0_14px] [list-style:none]">
+                    {filteredVoters.map((voter) => {
+                      const hasParticipated = voter.participatedOrganizations.length > 0;
+                      return (
+                        <li className="[display:flex] [align-items:center] [justify-content:space-between] [gap:14px] [padding:11px_0] [border-bottom:1px_solid_#f4f1ed] max-[600px]:[align-items:flex-start] max-[600px]:[flex-direction:column]" key={voter.nis}>
+                          <div className="[min-width:0] [flex:1]">
+                            <strong className="[display:block] [overflow-wrap:anywhere] [color:#34483e] [font-size:10px]">{voter.name}</strong>
+                            <span className={`[display:inline-block] [margin-top:5px] [font-size:8px] [font-weight:600] ${hasParticipated ? "[color:#43634a]" : "[color:#8a6c38]"}`}>
+                              {hasParticipated
+                                ? "Sudah memilih"
+                                : voter.hasMpkChoices
+                                  ? "Pilihan MPK belum lengkap"
+                                  : "Belum memilih"}
+                            </span>
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                ) : (
+                  <p className="[margin:0] [padding:20px_14px] [color:#929a91] [font-size:10px]">
+                    {loading ? "Memuat daftar pemilih..." : "Tidak ada pemilih yang cocok dengan pencarian ini."}
+                  </p>
+                )}
+          </section>
+        </section>
+
+        <section
+          id="admin-results-panel"
+          key={`results-${activeAdminPage}`}
+          className="admin-page-panel motion-safe:animate-content-in [&[hidden]]:[display:none]"
+          aria-labelledby="admin-results-tab"
+          hidden={activeAdminPage !== "results"}
+        >
+        {error && <p className="form-error app-error [margin:-7px_0_10px] [color:#b6473d] [font-size:10px] [width:fit-content] [margin:14px_0_0] [padding:9px_12px] [border:1px_solid_#f0d7d9] [border-radius:6px] [background:#fff7f7]" role="alert">{error}</p>}
+        {resetError && <p className="form-error app-error [margin:-7px_0_10px] [color:#b6473d] [font-size:10px] [width:fit-content] [margin:14px_0_0] [padding:9px_12px] [border:1px_solid_#f0d7d9] [border-radius:6px] [background:#fff7f7]" role="alert">{resetError}</p>}
+        {resetMessage && <p className="admin-reset-notice [margin:12px_0] [padding:10px_12px] [border:1px_solid_#dce9ce] [border-radius:7px] [color:#4a693c] [background:#f5faef] [font-size:10px] [line-height:1.6]" role="status">{resetMessage}</p>}
+
+        <section className="admin-total-card [min-height:104px] [display:flex] [align-items:center] [gap:15px] [padding:19px_22px] [border:1px_solid_#f0e2e3] [border-radius:11px] [background:linear-gradient(110deg,_#fff_12%,_#fff7f7_100%)] [&_small]:[display:block] [&_strong]:[display:block] [&_small]:[color:#9a8587] [&_small]:[font-size:8px] [&_small]:[font-weight:700] [&_small]:[letter-spacing:.8px] [&_strong]:[margin-top:5px] [&_strong]:[color:#342b2c] [&_strong]:[font:800_25px_'Nunito',_sans-serif] max-[420px]:[gap:11px] max-[420px]:[padding:15px]" aria-live="polite">
+          <span className="admin-total-icon [width:43px] [height:43px] [border-radius:12px] [display:grid] [place-items:center] [color:#bd3548] [background:#ffeaec] [font-size:20px]" aria-hidden="true">✓</span>
+          <span><small>TOTAL PEMILIH</small><strong key={results?.totalVoters ?? "loading"} className="motion-safe:animate-number-in">{loading && !results ? "—" : results?.totalVoters ?? 0}</strong></span>
+          <span className="admin-total-caption [margin-left:auto] [color:#9a8c8d] [font-size:9px] max-[760px]:[max-width:140px] max-[760px]:[text-align:right] max-[760px]:[line-height:1.5] max-[420px]:[max-width:115px] max-[420px]:[font-size:8px]">Jumlah siswa yang sudah memberikan suara</span>
+        </section>
+        <p className="admin-privacy-notice [margin:11px_0_0] [padding:10px_12px] [border:1px_solid_#f1e2c6] [border-radius:8px] [color:#795a2d] [background:#fffaf0] [font-size:9px] [line-height:1.55]" role="note">
+          Nama ditampilkan hanya untuk mencatat partisipasi pemilih. Pilihan setiap pemilih tidak ditampilkan atau dihubungkan dengan hasil.
+        </p>
+
+        <section className="results-grid [display:grid] [grid-template-columns:repeat(3,_minmax(0,_1fr))] [gap:15px] [margin-top:17px] max-[760px]:[grid-template-columns:1fr] max-[760px]:[gap:10px]" aria-label="Rekap suara tiap organisasi" aria-busy={loading}>
+          {results?.organizations.map((organization, index) => {
+            const leader = organization.candidates.length > 0
+            ? organization.candidates.reduce(
+                (current, candidate) => candidate.votes > current.votes ? candidate : current,
+                organization.candidates[0],
+              )
+            : null;
+            return (
+              <article
+                className="results-card transition-transform duration-200 hover:-translate-y-0.5 hover:shadow-lg motion-safe:animate-fade-in motion-reduce:animate-none motion-reduce:transform-none [min-width:0] [padding:18px_17px_14px] [border:1px_solid_#e9ebe4] [border-radius:10px] [background:#fff] [box-shadow:0_4px_14px_rgba(32,_54,_43,_.025)]"
+                key={organization.id}
+                style={{ animationDelay: `${index * 100}ms` }}
+              >
+                <header className="results-card-header [display:flex] [align-items:center] [gap:10px] [padding-bottom:14px] [border-bottom:1px_solid_#f0f0eb]">
+                  <span className={`organization-icon  [width:34px] [height:34px] [flex:0_0_auto] [border-radius:9px] [display:grid] [place-items:center] [font:700_13px_'Manrope',_sans-serif] max-[760px]:[width:28px] max-[760px]:[height:28px] max-[760px]:[border-radius:7px] max-[760px]:[font-size:11px] max-[420px]:[width:25px] max-[420px]:[height:25px]${organization.id === "mpk" ? "lilac [color:#63518c] [background:#e9e1f4]" : organization.id === "osis" ? "mint [color:#306953] [background:#dceee0]" : "peach [color:#a05e44] [background:#f8e3d6]"}`}>
+                    {organization.name.charAt(0)}
+                  </span>
+                  <span className="results-organization-title [min-width:0] [flex:1] [&_strong]:[display:block] [&_small]:[display:block] [&_strong]:[color:#34483e] [&_strong]:[font-size:11px] [&_small]:[margin-top:3px] [&_small]:[overflow:hidden] [&_small]:[color:#929a91] [&_small]:[font-size:8px] [&_small]:[text-overflow:ellipsis] [&_small]:[white-space:nowrap]">
+                    <strong>{organization.name}</strong>
+                    <small>{organization.fullName}</small>
+                  </span>
+                  <span className="results-total [text-align:right] [&_strong]:[display:block] [&_strong]:[color:#374b3e] [&_strong]:[font:800_17px_'Nunito',_sans-serif] [&_small]:[display:block] [&_small]:[margin-top:1px] [&_small]:[color:#939b92] [&_small]:[font-size:8px]">
+                    <strong>{organization.totalVotes}</strong>
+                    <small>{organization.id === "mpk" ? "pemilih lengkap" : "suara"}</small>
+                  </span>
+                </header>
+                {organization.positions.length > 0 ? (
+                  <div className="mpk-results-positions [display:grid] [gap:14px]">
+                    {organization.positions.map((position, positionIndex) => {
+                      const highestVotes = Math.max(
+                        0,
+                        ...position.candidates.map((candidate) => candidate.votes),
+                      );
+                      const leaders = position.candidates.filter(
+                        (candidate) => candidate.votes === highestVotes && highestVotes > 0,
+                      );
+                      return (
+                      <section
+                        className="mpk-results-position motion-safe:animate-content-in [padding-top:14px] [border-bottom:1px_solid_#f0f0eb] [padding-bottom:14px] [&_h3]:[display:flex] [&_h3]:[justify-content:space-between] [&_h3]:[gap:8px] [&_h3]:[margin:0] [&_h3]:[color:#536157] [&_h3]:[font-size:9px] [&_h3_small]:[color:#939b92] [&_h3_small]:[font-size:8px] [&_h3_small]:[font-weight:500] [&_.results-candidates]:[gap:11px] [&_.results-candidates]:[padding-top:11px]"
+                        key={position.id}
+                        style={{ animationDelay: `${positionIndex * 90}ms` }}
+                      >
+                        <h3>{position.title} <small>{position.totalVotes} suara</small></h3>
+                        <div className="results-candidates [display:grid] [gap:15px] [padding-top:16px]">
+                          {position.candidates.map((candidate) => {
+                            const percentage = position.totalVotes
+                              ? Math.round((candidate.votes / position.totalVotes) * 100)
+                              : 0;
+                            return (
+                              <div className="result-candidate" key={candidate.id}>
+                                <div className="result-candidate-copy [display:flex] [align-items:center] [justify-content:space-between] [gap:8px] [color:#536157] [font-size:9px] [&_>_span]:[display:flex] [&_>_span]:[min-width:0] [&_>_span]:[align-items:center] [&_>_span]:[gap:7px] [&_>_strong]:[flex:0_0_auto] [&_>_strong]:[color:#45574a] [&_>_strong]:[font-size:9px] [&_>_strong_small]:[color:#939b92] [&_>_strong_small]:[font-size:8px] [&_>_strong_small]:[font-weight:500]">
+                                  <span className="result-team-names [&_strong]:[display:block] [&_small]:[display:block] [&_strong]:[color:#536157] [&_strong]:[font-size:9px] [&_strong]:[font-weight:600] [&_small]:[margin-top:2px] [&_small]:[color:#939b92] [&_small]:[font-size:8px] [&_small]:[font-weight:400]"><strong>{candidate.name}</strong></span>
+                                  <strong>{candidate.votes} <small>({percentage}%)</small></strong>
+                                </div>
+                                <div className="result-track [height:6px] [margin-top:7px] [overflow:hidden] [border-radius:8px] [background:#f1f1ec] [&_>_span]:[display:block] [&_>_span]:[height:100%] [&_>_span]:[min-width:0] [&_>_span]:[border-radius:inherit] [&_>_span]:[background:linear-gradient(90deg,_#cf4253,_#e8999f)] [&_>_span]:[transition:width_.8s_cubic-bezier(.2,.8,.2,1)]" role="progressbar"
+                                  aria-label={`Suara ${position.title} untuk ${candidate.name}`}
+                                  aria-valuenow={percentage} aria-valuemin={0} aria-valuemax={100}>
+                                  <span style={{ width: `${percentage}%` }} />
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                        {leaders.length > 0 && (
+                          <p className="results-leader [margin:12px_0_0] [padding-top:9px] [border-top:1px_solid_#f1f0eb] [color:#90978e] [font-size:8px] [&_strong]:[color:#665155] [&_strong]:[font-weight:700]">
+                            Terbanyak sementara: <strong>{leaders.map((candidate) => candidate.name).join(", ")}</strong> ({highestVotes} suara)
+                          </p>
+                        )}
+                      </section>
+                      );
+                    })}
+                  </div>
+                ) : (
+                <div className="results-candidates [display:grid] [gap:15px] [padding-top:16px]">
+                  {organization.candidates.map((candidate) => {
+                    const percentage = organization.totalVotes
+                      ? Math.round((candidate.votes / organization.totalVotes) * 100)
+                      : 0;
+                    return (
+                      <div className="result-candidate" key={candidate.id}>
+                        <div className="result-candidate-copy [display:flex] [align-items:center] [justify-content:space-between] [gap:8px] [color:#536157] [font-size:9px] [&_>_span]:[display:flex] [&_>_span]:[min-width:0] [&_>_span]:[align-items:center] [&_>_span]:[gap:7px] [&_>_strong]:[flex:0_0_auto] [&_>_strong]:[color:#45574a] [&_>_strong]:[font-size:9px] [&_>_strong_small]:[color:#939b92] [&_>_strong_small]:[font-size:8px] [&_>_strong_small]:[font-weight:500]">
+                          <span>
+                            <small className="result-number [color:#a2aaa0] [font-size:8px]">{candidate.number}</small>
+                            <span className="result-team-names [&_strong]:[display:block] [&_small]:[display:block] [&_strong]:[color:#536157] [&_strong]:[font-size:9px] [&_strong]:[font-weight:600] [&_small]:[margin-top:2px] [&_small]:[color:#939b92] [&_small]:[font-size:8px] [&_small]:[font-weight:400]">
+                              <strong>{candidate.name}</strong>
+                              <small>Wakil: {candidate.viceName}</small>
+                            </span>
+                          </span>
+                          <strong>{candidate.votes} <small>({percentage}%)</small></strong>
+                        </div>
+                        <div
+                          className="result-track [height:6px] [margin-top:7px] [overflow:hidden] [border-radius:8px] [background:#f1f1ec] [&_>_span]:[display:block] [&_>_span]:[height:100%] [&_>_span]:[min-width:0] [&_>_span]:[border-radius:inherit] [&_>_span]:[background:linear-gradient(90deg,_#cf4253,_#e8999f)] [&_>_span]:[transition:width_.8s_cubic-bezier(.2,.8,.2,1)]"
+                          role="progressbar"
+                          aria-label={`Suara untuk ${candidate.name}`}
+                          aria-valuenow={percentage}
+                          aria-valuemin={0}
+                          aria-valuemax={100}
+                        >
+                          <span style={{ width: `${percentage}%` }} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                )}
+                <div hidden>
+                <details className="voter-details [margin-top:13px] [border-top:1px_solid_#f1f0eb] [color:#566259] [font-size:9px] [&_summary]:[padding:11px_0_0] [&_summary]:[color:#566259] [&_summary]:[font-weight:700] [&_summary]:[cursor:pointer] [&[open]_>_ul]:[animation:details-in_350ms_cubic-bezier(.2,.75,.25,1)_both] [&[open]_>_p]:[animation:details-in_350ms_cubic-bezier(.2,.75,.25,1)_both] [&_ul]:[display:grid] [&_ul]:[gap:7px] [&_ul]:[max-height:210px] [&_ul]:[overflow-y:auto] [&_ul]:[margin:10px_0_0] [&_ul]:[padding:0_2px_0_14px] [&_li]:[padding-left:1px] [&_li]:[line-height:1.45] [&_li_span]:[display:block] [&_li_strong]:[display:block] [&_li_strong]:[color:#a93646] [&_li_strong]:[font-size:8px] [&_li_strong]:[font-weight:600] [&_p]:[margin:9px_0_0] [&_p]:[color:#929a91] [&_.admin-voter-row]:[display:flex] [&_.admin-voter-row]:[align-items:center] [&_.admin-voter-row]:[justify-content:space-between] [&_.admin-voter-row]:[gap:8px] [&_.admin-voter-row]:[padding:7px_0] [&_.admin-voter-row]:[border-bottom:1px_solid_#f4f1ed] [&_.admin-voter-row]:[list-style:none] [&_.admin-voter-copy_>_strong]:[color:#566259] [&_.admin-voter-copy_>_strong]:[font-size:9px] [&_.admin-voter-copy_>_span]:[margin-top:2px] [&_.admin-voter-copy_>_span]:[color:#a93646] [&_.admin-voter-copy_>_span]:[font-size:8px]">
+                  <summary>Pemilih dan pilihannya ({organization.voters.length})</summary>
+                  {organization.voters.length > 0 ? (
+                    <ul>
+                      {organization.voters.map((voter) => (
+                        <li className="admin-voter-row motion-safe:animate-content-in" key={voter.nis}>
+                          <span className="admin-voter-copy [min-width:0] [overflow-wrap:anywhere] [&_small]:[display:block] [&_small]:[margin-top:2px] [&_small]:[color:#929a91] [&_small]:[font-size:8px]">
+                            <strong>{voter.name}</strong>
+                            <small>NIS: {voter.nis}</small>
+                            <span>{voter.candidateName}</span>
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="motion-safe:animate-content-in">Belum ada siswa yang memilih.</p>
+                  )}
+                </details>
+                <details className="voter-details abstainer-details [margin-top:13px] [border-top:1px_solid_#f1f0eb] [color:#566259] [font-size:9px] [&_summary]:[padding:11px_0_0] [&_summary]:[color:#566259] [&_summary]:[font-weight:700] [&_summary]:[cursor:pointer] [&[open]_>_ul]:[animation:details-in_350ms_cubic-bezier(.2,.75,.25,1)_both] [&[open]_>_p]:[animation:details-in_350ms_cubic-bezier(.2,.75,.25,1)_both] [&_ul]:[display:grid] [&_ul]:[gap:7px] [&_ul]:[max-height:210px] [&_ul]:[overflow-y:auto] [&_ul]:[margin:10px_0_0] [&_ul]:[padding:0_2px_0_14px] [&_li]:[padding-left:1px] [&_li]:[line-height:1.45] [&_li_span]:[display:block] [&_li_strong]:[display:block] [&_li_strong]:[color:#a93646] [&_li_strong]:[font-size:8px] [&_li_strong]:[font-weight:600] [&_p]:[margin:9px_0_0] [&_p]:[color:#929a91] [&_.admin-voter-row]:[display:flex] [&_.admin-voter-row]:[align-items:center] [&_.admin-voter-row]:[justify-content:space-between] [&_.admin-voter-row]:[gap:8px] [&_.admin-voter-row]:[padding:7px_0] [&_.admin-voter-row]:[border-bottom:1px_solid_#f4f1ed] [&_.admin-voter-row]:[list-style:none] [&_.admin-voter-copy_>_strong]:[color:#566259] [&_.admin-voter-copy_>_strong]:[font-size:9px] [&_.admin-voter-copy_>_span]:[margin-top:2px] [&_.admin-voter-copy_>_span]:[color:#a93646] [&_.admin-voter-copy_>_span]:[font-size:8px] [&_li]:[color:#795a2d]">
+                  <summary>
+                    {organization.id === "mpk"
+                      ? "Belum menyelesaikan pilihan"
+                      : "Belum memilih / golput"} ({organization.abstainers.length})
+                  </summary>
+                  {organization.abstainers.length > 0 ? (
+                    <ul>
+                      {organization.abstainers.map((name, index) => (
+                        <li className="motion-safe:animate-content-in" key={`${name}-${index}`}>{name}</li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="motion-safe:animate-content-in">Semua pemilih terdaftar sudah memilih.</p>
+                  )}
+                </details>
+                </div>
+                {leader && organization.totalVotes > 0 && leader.votes > 0 && (
+                  <p className="results-leader [margin:16px_0_0] [padding-top:11px] [border-top:1px_solid_#f1f0eb] [color:#90978e] [font-size:8px] [&_strong]:[color:#665155] [&_strong]:[font-weight:700]">
+                    Suara terbanyak sementara: <strong>{leader.name} &amp; {leader.viceName}</strong>
+                  </p>
+                )}
+              </article>
+            );
+          })}
+        </section>
+        {!results && !loading && !error && (
+          <p className="results-empty [padding:20px] [color:#889188] [font-size:11px] [text-align:center]">Rekap suara belum tersedia.</p>
+        )}
+        <footer className="app-footer admin-footer [display:flex] [justify-content:space-between] [padding:15px_2px_0] [color:#9ca39b] [font-size:8px] [letter-spacing:.35px] max-[760px]:[gap:12px] max-[760px]:[font-size:7px] max-[420px]:[font-size:6px] [margin-top:22px]">
+          <span>© 2026 SUARA MANDARA</span>
+          <span>Rekap ini diperbarui saat tombol perbarui ditekan.</span>
+        </footer>
+        </section>
+      </div>
+      {resetAllOpen && (
+        <div className="modal-backdrop motion-safe:animate-backdrop-in [position:fixed] [z-index:10] [inset:0] [display:grid] [place-items:center] [padding:20px] [background:rgba(72,_30,_37,_.5)] [backdrop-filter:blur(3px)]" role="presentation" onMouseDown={(event) => {
+          if (event.target === event.currentTarget && !resetting) setResetAllOpen(false);
+        }}>
+          <section
+            className="confirmation-modal reset-vote-modal motion-safe:animate-modal-in [width:min(420px,_100%)] [position:relative] [padding:31px] [border-radius:13px] [background:#fff] [box-shadow:0_20px_65px_rgba(81,_35,_40,_.2)] [text-align:center] [&_h2]:[margin:9px_0_9px] [&_h2]:[color:#432d31] [&_h2]:[font:700_20px_'Manrope',_sans-serif] [&_h2]:[letter-spacing:-.7px] [&_>_p]:[max-width:320px] [&_>_p]:[margin:0_auto] [&_>_p]:[color:#79847b] [&_>_p]:[font-size:10px] [&_>_p]:[line-height:1.7] [&_>_p_strong]:[color:#a93646] [border:1px_solid_#f1dfdf] [&_.modal-candidate-avatar]:[color:#a93646] [&_.modal-candidate-avatar]:[background:#fff0f1] [&_.modal-close]:[color:#9c6f74] [&_.modal-close]:[background:#fff4f4] [&_.modal-actions_.primary-button]:[background:linear-gradient(110deg,_#d84c5c,_#bd3548)] [&_.modal-actions_.primary-button:hover:not(:disabled)]:[background:#ad293b] [&_.modal-actions_.primary-button:focus-visible]:[outline-color:#e7a0a7] [&_.secondary-button]:[border-color:#f0dfe0] [&_.secondary-button]:[color:#80585d] [&_.secondary-button:hover]:[border-color:#d98b94] [&_.secondary-button:hover]:[background:#fff8f8] [&_>_p]:[max-width:350px]"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="reset-vote-title"
+          >
+            <span className="reset-vote-icon [width:42px] [height:42px] [display:grid] [place-items:center] [margin:0_auto_13px] [border-radius:50%] [color:#a93646] [background:#fff0f1] [font-size:25px]" aria-hidden="true">↺</span>
+            <span className="eyebrow dark-eyebrow [font-size:9px] [font-weight:700] [letter-spacing:1.15px] [color:#849177]">KONFIRMASI RESET MENYELURUH</span>
+            <h2 id="reset-vote-title">Reset semua suara?</h2>
+            <p>
+              Seluruh suara MPK, OSIS, dan KY dari <strong>{results?.totalVoters ?? 0} pemilih</strong> akan dihapus permanen. Semua siswa dapat masuk kembali dan memilih ulang dari awal.
+            </p>
+            {resetError && <p className="form-error reset-dialog-error [margin:-7px_0_10px] [color:#b6473d] [font-size:10px] [margin:12px_0_0]" role="alert">{resetError}</p>}
+            <div className="modal-actions [display:grid] [grid-template-columns:1fr_1fr] [gap:9px] [margin-top:22px] [&_button:disabled]:[opacity:.65] [&_button:disabled]:[cursor:wait]">
+              <button
+                className="secondary-button [&:focus-visible]:[outline:3px_solid_#b5cd79] [&:focus-visible]:[outline-offset:3px] [height:42px] [border:1px_solid_#e4e8df] [border-radius:7px] [color:#536454] [background:#fff] [font-size:10px] [font-weight:600] [cursor:pointer]"
+                onClick={() => setResetAllOpen(false)}
+                disabled={resetting}
+              >
+                Batal
+              </button>
+              <button
+                className="primary-button reset-confirm-button [height:44px] [border:0] [border-radius:7px] [display:inline-flex] [align-items:center] [justify-content:center] [gap:14px] [color:#f9faef] [background:#17483b] [font-size:10px] [font-weight:700] [cursor:pointer] [transition:background_.2s,_transform_.2s,_box-shadow_.2s,_opacity_.2s] [&:hover:not(:disabled)]:[background:#225d4b] [&:hover:not(:disabled)]:[transform:translateY(-1px)] [&:active:not(:disabled)]:[transform:translateY(0)_scale(.98)] [&:disabled]:[cursor:wait] [&:focus-visible]:[outline:3px_solid_#b5cd79] [&:focus-visible]:[outline-offset:3px] [&_span]:[font-size:15px] [&_span]:[font-weight:400] [background:#b83243] [&:hover:not(:disabled)]:[background:#9e2939] [&:disabled]:[opacity:.65]"
+                onClick={() => void resetAllVotes()}
+                disabled={resetting}
+              >
+                {resetting ? "Mereset..." : "Ya, reset semua suara"}
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+    </main>
+  );
+}

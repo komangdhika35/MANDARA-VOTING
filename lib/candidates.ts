@@ -1,0 +1,151 @@
+import { getDatabase } from "@/lib/db";
+import {
+  candidateDatabaseIds,
+  organizationIds,
+  type CandidateConfiguration,
+  type CandidateConfigurations,
+  type ElectionCandidates,
+  type MpkMember,
+  type OrganizationLogos,
+} from "@/lib/election";
+
+type CandidateRow = {
+  candidate_id: string;
+  candidate_name: string;
+  vice_name: string;
+  candidate_number: string;
+  photo_data_url: string;
+  vision: string;
+  mission: string;
+};
+
+export function getCandidateConfigurations(): CandidateConfigurations {
+  const rows = getDatabase()
+    .prepare(
+      `SELECT
+         election_candidates.candidate_id,
+         election_candidates.candidate_name,
+         election_candidates.vice_name,
+         election_candidates.candidate_number,
+         COALESCE(election_candidate_details.photo_data_url, '') AS photo_data_url,
+         COALESCE(election_candidate_details.vision, '') AS vision,
+         COALESCE(election_candidate_details.mission, '') AS mission
+       FROM election_candidates
+       LEFT JOIN election_candidate_details
+         ON election_candidate_details.candidate_id = election_candidates.candidate_id`,
+    )
+    .all() as CandidateRow[];
+  const candidatesById = new Map(rows.map((row) => [row.candidate_id, row]));
+  const configurations: CandidateConfigurations = { mpk: [], osis: [], ky: [] };
+
+  for (const organizationId of organizationIds) {
+    if (organizationId === "mpk") continue;
+    configurations[organizationId] = candidateDatabaseIds[organizationId].map((candidateId) => {
+      const row = candidatesById.get(candidateId);
+      if (!row) throw new Error(`Konfigurasi kandidat ${candidateId} tidak ditemukan.`);
+      return {
+        id: row.candidate_id,
+        name: row.candidate_name,
+        viceName: row.vice_name,
+        number: String(Number(row.candidate_number)),
+        photoDataUrl: row.photo_data_url,
+        vision: row.vision,
+        mission: row.mission,
+      } satisfies CandidateConfiguration;
+    });
+  }
+
+  return configurations;
+}
+
+export function getElectionCandidates(): ElectionCandidates {
+  const database = getDatabase();
+  const organizationLogos: OrganizationLogos = { mpk: "", osis: "", ky: "" };
+  const logoRows = database
+    .prepare("SELECT organization_id, logo_data_url FROM organization_logos")
+    .all() as { organization_id: keyof OrganizationLogos; logo_data_url: string }[];
+  for (const logo of logoRows) organizationLogos[logo.organization_id] = logo.logo_data_url;
+
+  const candidateCountRows = database
+    .prepare(
+      "SELECT organization_id, candidate_count FROM election_candidate_counts",
+    )
+    .all() as { organization_id: "osis" | "ky"; candidate_count: number }[];
+  const candidateCountByOrganization = new Map(
+    candidateCountRows.map((row) => [row.organization_id, row.candidate_count]),
+  );
+  const candidateCounts: Record<"osis" | "ky", number> = {
+    osis: candidateCountByOrganization.get("osis") ?? 2,
+    ky: candidateCountByOrganization.get("ky") ?? 2,
+  };
+
+  const memberRows = database
+    .prepare(
+      `SELECT
+         mpk_members.member_id AS id,
+         mpk_members.name,
+         COALESCE(mpk_member_details.photo_data_url, '') AS photoDataUrl,
+         COALESCE(mpk_member_details.vision, '') AS vision,
+         COALESCE(mpk_member_details.mission, '') AS mission,
+         mpk_member_positions.candidate_number AS number,
+         mpk_member_positions.position
+       FROM mpk_members
+       JOIN mpk_member_positions ON mpk_member_positions.member_id = mpk_members.member_id
+       LEFT JOIN mpk_member_details ON mpk_member_details.member_id = mpk_members.member_id
+       ORDER BY mpk_member_positions.position,
+                CAST(mpk_member_positions.candidate_number AS INTEGER),
+                mpk_members.name COLLATE NOCASE`,
+    )
+    .all() as (MpkMember & { position: string })[];
+  return {
+    mpkMembers: {
+      chair: memberRows
+        .filter((member) => member.position === "chair")
+        .map(({ id, name, number, photoDataUrl, vision, mission }) => ({
+          id,
+          name,
+          number: String(Number(number)),
+          photoDataUrl,
+          vision,
+          mission,
+        })),
+      vice: memberRows
+        .filter((member) => member.position === "vice")
+        .map(({ id, name, number, photoDataUrl, vision, mission }) => ({
+          id,
+          name,
+          number: String(Number(number)),
+          photoDataUrl,
+          vision,
+          mission,
+        })),
+    },
+    organizations: getCandidateConfigurations(),
+    candidateCounts,
+    organizationLogos,
+  };
+}
+
+export function getMpkSelections(nis: string) {
+  const rows = getDatabase()
+    .prepare("SELECT position, member_id FROM mpk_choices WHERE nis = ?")
+    .all(nis) as { position: string; member_id: string }[];
+  return {
+    chair: rows.find((row) => row.position === "chair")?.member_id ?? null,
+    vice: rows.find((row) => row.position === "vice")?.member_id ?? null,
+  };
+}
+
+export function getCandidateSelections(
+  nis: string,
+): Partial<Record<"osis" | "ky", string>> {
+  const rows = getDatabase()
+    .prepare(
+      `SELECT organization_id, candidate_id
+       FROM voter_choices
+       WHERE nis = ? AND organization_id IN ('osis', 'ky')`,
+    )
+    .all(nis) as { organization_id: "osis" | "ky"; candidate_id: string }[];
+
+  return Object.fromEntries(rows.map((row) => [row.organization_id, row.candidate_id]));
+}

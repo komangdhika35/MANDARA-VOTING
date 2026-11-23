@@ -1,0 +1,123 @@
+import { createHash, timingSafeEqual } from "node:crypto";
+import { NextResponse } from "next/server";
+import { createAdminSession, createSession } from "@/lib/auth";
+import { getCandidateSelections, getMpkSelections } from "@/lib/candidates";
+import { getDatabase } from "@/lib/db";
+import { organizationIds } from "@/lib/election";
+
+export const runtime = "nodejs";
+
+export async function POST(request: Request) {
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Data login tidak valid." }, { status: 400 });
+  }
+
+  if (typeof body !== "object" || body === null) {
+    return NextResponse.json({ error: "Data login tidak valid." }, { status: 400 });
+  }
+
+  try {
+    if (
+      "username" in body &&
+      typeof body.username === "string" &&
+      body.username.trim().toLocaleLowerCase("en-US") === "admin"
+    ) {
+      if (!("password" in body) || typeof body.password !== "string") {
+        return NextResponse.json({ error: "Password admin wajib diisi." }, { status: 400 });
+      }
+
+      const expectedPassword = process.env.ADMIN_PASSWORD;
+      if (!expectedPassword) {
+        console.error("ADMIN_PASSWORD belum dikonfigurasi.");
+        return NextResponse.json(
+          { error: "Login admin belum dikonfigurasi. Hubungi pengelola aplikasi." },
+          { status: 503 },
+        );
+      }
+
+      const submittedHash = createHash("sha256").update(body.password).digest();
+      const expectedHash = createHash("sha256").update(expectedPassword).digest();
+      if (!timingSafeEqual(submittedHash, expectedHash)) {
+        return NextResponse.json({ error: "Password admin salah." }, { status: 401 });
+      }
+
+      await createAdminSession();
+      return NextResponse.json({ role: "admin" });
+    }
+
+    if (!("nis" in body) || typeof body.nis !== "string") {
+      return NextResponse.json({ error: "NIS wajib diisi." }, { status: 400 });
+    }
+
+    const nis = body.nis.trim();
+    if (nis.toLocaleLowerCase("en-US") === "admin") {
+      return NextResponse.json({ error: "NIS tidak valid." }, { status: 400 });
+    }
+    if (!/^\d{4}$/.test(nis)) {
+      return NextResponse.json({ error: "NIS pemilih harus terdiri dari 4 angka." }, { status: 400 });
+    }
+
+    const voter = getDatabase()
+      .prepare(
+        `SELECT voters.nis, voters.name
+         FROM voter_ids
+         JOIN voters ON voters.nis = voter_ids.nis
+         WHERE voter_ids.identifier = ? AND voters.active = 1`,
+      )
+      .get(nis) as { nis: string; name: string } | undefined;
+
+    if (!voter) {
+      return NextResponse.json(
+        { error: "NIS atau password pemilih salah." },
+        { status: 401 },
+      );
+    }
+
+    if ("step" in body && body.step === "identify") {
+      return NextResponse.json({ voter: { name: voter.name } });
+    }
+
+    if (!("password" in body) || typeof body.password !== "string" || body.password.length > 32) {
+      return NextResponse.json({ error: "Password pemilih wajib diisi." }, { status: 400 });
+    }
+
+    const expectedVoterPassword = (BigInt(nis) + BigInt(1)).toString();
+    const submittedVoterPasswordHash = createHash("sha256").update(body.password).digest();
+    const expectedVoterPasswordHash = createHash("sha256").update(expectedVoterPassword).digest();
+    if (!timingSafeEqual(submittedVoterPasswordHash, expectedVoterPasswordHash)) {
+      return NextResponse.json({ error: "NIS atau password pemilih salah." }, { status: 401 });
+    }
+
+    const database = getDatabase();
+    const participationRows = database
+      .prepare("SELECT organization_id FROM participation WHERE nis = ?")
+      .all(voter.nis) as { organization_id: string }[];
+    const votedOrganizations = participationRows
+      .map((row) => row.organization_id)
+      .filter((id) => organizationIds.includes(id as (typeof organizationIds)[number]));
+    if (new Set(votedOrganizations).size === organizationIds.length) {
+      return NextResponse.json(
+        { error: "Kamu sudah menyelesaikan seluruh pilihan. NIS ini tidak dapat digunakan untuk login kembali." },
+        { status: 403 },
+      );
+    }
+
+    await createSession(voter.nis);
+
+    return NextResponse.json({
+      voter: { name: voter.name },
+      mpkSelections: getMpkSelections(voter.nis),
+      candidateSelections: getCandidateSelections(voter.nis),
+      votedOrganizations,
+    });
+  } catch (error) {
+    console.error("Gagal memproses login pemilih:", error);
+    return NextResponse.json(
+      { error: "Login belum dapat diproses. Silakan coba lagi." },
+      { status: 500 },
+    );
+  }
+}
