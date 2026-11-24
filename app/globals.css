@@ -198,16 +198,6 @@
     --line: #e9ebe3;
   }
 
-  html:has(.student-login-page),
-  body:has(.student-login-page) {
-    min-height: 100%;
-    background-color: #68111f;
-  }
-
-  body:has(.student-login-page) {
-    background-color: #68111f !important;
-  }
-
   button:focus-visible {
     outline: 3px solid #b5cd79;
     outline-offset: 3px;
@@ -260,13 +250,9 @@
     position: relative;
     overflow: hidden;
     background:
-      radial-gradient(circle at 6% 8%, rgba(247, 223, 160, 0.26), transparent 26%),
-      radial-gradient(circle at 94% 88%, rgba(226, 183, 92, 0.18), transparent 28%),
-      radial-gradient(ellipse at 50% 46%, rgba(165, 31, 52, 0.24), transparent 62%),
-      linear-gradient(135deg, #7c1526 0%, #a51f34 46%, #68111f 100%);
-    box-shadow:
-      inset 0 0 0 1px rgba(247, 223, 160, 0.16),
-      inset 0 0 110px rgba(42, 4, 13, 0.34);
+      radial-gradient(circle at 8% 88%, rgba(143, 29, 44, 0.12), transparent 32%),
+      radial-gradient(circle at 94% 8%, rgba(227, 185, 88, 0.22), transparent 30%),
+      linear-gradient(135deg, #fffefa 12%, #fff7f6 55%, #fdf2ef);
   }
 
   .student-login-page::before {
@@ -274,22 +260,18 @@
     position: fixed;
     inset: 0;
     pointer-events: none;
-    opacity: 0.5;
+    opacity: 0.55;
     background-image:
-      radial-gradient(circle at center, rgba(255, 230, 174, 0.18) 1px, transparent 1.6px),
-      repeating-linear-gradient(45deg, transparent 0 20px, rgba(255, 223, 160, 0.07) 20px 21px),
-      repeating-linear-gradient(-45deg, transparent 0 20px, rgba(255, 255, 255, 0.035) 20px 21px);
-    background-size: 28px 28px, auto, auto;
+      radial-gradient(circle at center, rgba(143, 29, 44, 0.07) 1px, transparent 1.5px),
+      repeating-linear-gradient(45deg, transparent 0 18px, rgba(227, 185, 88, 0.05) 18px 19px);
+    background-size: 26px 26px, auto;
   }
 
   .student-login-shell {
     position: relative;
-    border: 1px solid rgba(247, 223, 160, 0.62);
+    border: 1px solid rgba(165, 31, 52, 0.14);
     background: #fff;
-    box-shadow:
-      0 32px 90px rgba(42, 4, 13, 0.42),
-      0 4px 14px rgba(42, 4, 13, 0.28),
-      0 0 0 1px rgba(104, 17, 31, 0.22);
+    box-shadow: 0 28px 78px rgba(91, 25, 34, 0.14), 0 3px 10px rgba(91, 25, 34, 0.05);
   }
 
   .student-login-shell::before {
@@ -301,21 +283,6 @@
     background:
       radial-gradient(circle at 12% 8%, rgba(227, 185, 88, 0.14), transparent 26%),
       radial-gradient(circle at 88% 92%, rgba(143, 29, 44, 0.08), transparent 28%);
-  }
-
-  .student-login-page .login-brand-logo {
-    border: 1px solid rgba(247, 223, 160, 0.75) !important;
-    background: #fffaf0 !important;
-    box-shadow: 0 8px 22px rgba(42, 4, 13, 0.32) !important;
-  }
-
-  .student-login-page .login-brand-copy strong {
-    color: #fff7e8 !important;
-    text-shadow: 0 2px 10px rgba(42, 4, 13, 0.4);
-  }
-
-  .student-login-page .login-brand-copy small {
-    color: #f0cf83 !important;
   }
 
   .student-login-visual {
@@ -357,18 +324,11 @@
   }
 
   .student-login-visual .login-school-watermark {
-    right: -54px;
-    top: 48px;
-    bottom: auto;
-    z-index: 0;
-    width: clamp(300px, 80%, 430px);
-    height: auto;
-    opacity: 0.14;
-    filter: saturate(0.65) contrast(1.08);
-    pointer-events: none;
-    user-select: none;
-    -webkit-mask-image: radial-gradient(circle at 50% 50%, #000 70%, transparent 92%);
-    mask-image: radial-gradient(circle at 50% 50%, #000 70%, transparent 92%);
+    right: -18px;
+    top: auto;
+    bottom: 6px;
+    width: clamp(150px, 32%, 180px);
+    opacity: 0.1;
   }
 
   .student-login-visual > .eyebrow {
@@ -538,11 +498,11 @@
   .student-login-portal-art {
     position: absolute;
     z-index: 1;
-    top: 46px;
-    right: 12px;
-    width: 116px;
+    top: 48px;
+    right: 14px;
+    width: 104px;
     height: auto;
-    opacity: 0.98;
+    opacity: 0.95;
     pointer-events: none;
   }
 
@@ -551,7 +511,7 @@
     z-index: 2;
     max-width: 100%;
     margin-top: 30px;
-    padding-right: 116px;
+    padding-right: 104px;
   }
 
   .student-login-form-panel .form-icon {
@@ -745,13 +705,12 @@
     font-size: 8px;
   }
 
-  .student-login-page .login-bottom-note,
-  .student-login-page .login-bottom-note span {
-    color: rgba(255, 236, 198, 0.86) !important;
+  .student-login-page .login-bottom-note {
+    color: #8f6b64;
   }
 
-  .student-login-page .login-bottom-note .tiny-spark {
-    color: #f0cf83 !important;
+  .student-login-page .tiny-spark {
+    color: #a51f34;
   }
 
   @media (max-width: 900px) {
@@ -786,13 +745,13 @@
 
     .student-login-form-panel .form-heading {
       margin-top: 22px;
-      padding-right: 96px;
+      padding-right: 88px;
     }
 
     .student-login-portal-art {
-      top: 32px;
-      right: 8px;
-      width: 92px;
+      top: 34px;
+      right: 10px;
+      width: 84px;
     }
 
     .student-login-form-panel .login-hint,
@@ -812,11 +771,11 @@
     }
 
     .student-login-form-panel .form-heading {
-      padding-right: 84px;
+      padding-right: 76px;
     }
 
     .student-login-portal-art {
-      width: 82px;
+      width: 74px;
     }
 
     .student-login-form-panel .login-footer {
