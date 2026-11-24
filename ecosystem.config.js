@@ -1,34 +1,62 @@
-const path = require("node:path");
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 
-module.exports = {
-  apps: [
-    {
-      name: "suara-mandara",
+function getPort() {
+  const envLocalPath = join(__dirname, ".env.local");
+  let port = process.env.PORT || "3000";
 
-      // Launch Next.js directly using the project's local installation.
-      script: path.join(__dirname, "node_modules", "next", "dist", "bin", "next"),
-      args: "start",
-      cwd: __dirname,
-      interpreter: process.execPath,
+  if (existsSync(envLocalPath)) {
+    const envContent = readFileSync(envLocalPath, "utf8");
+    const match = envContent.match(/^\s*(?:export\s+)?PORT\s*=\s*(.*?)\s*$/m);
 
-      // SQLite uses a local database file. Keep a single application process.
-      instances: 1,
-      exec_mode: "fork",
+    if (match) {
+      let value = match[1].trim();
 
-      // Process management.
-      autorestart: true,
-      watch: false,
-      restart_delay: 3000,
-      max_restarts: 10,
-      min_uptime: "10s",
-      kill_timeout: 10000,
-      time: true,
+      // Support quoted values and unquoted inline comments.
+      if (
+        (value.startsWith("\"") && value.endsWith("\"")) ||
+        (value.startsWith("'") && value.endsWith("'"))
+      ) {
+        value = value.slice(1, -1);
+      } else {
+        value = value.replace(/\s+#.*$/, "").trim();
+      }
 
-      // Production environment.
-      env_production: {
-        NODE_ENV: "production",
-        PORT: process.env.PORT || 3000,
-      },
+      if (value) port = value;
+    }
+  }
+
+  const numericPort = Number(port);
+  if (!Number.isInteger(numericPort) || numericPort < 1 || numericPort > 65535) {
+    throw new Error(`Invalid PORT value: ${port}. Expected a number between 1 and 65535.`);
+  }
+
+  return String(numericPort);
+}
+
+export const apps = [
+  {
+    name: "suara-mandara",
+    script: join(__dirname, "node_modules", "next", "dist", "bin", "next"),
+    args: "start",
+    cwd: __dirname,
+    interpreter: process.execPath,
+
+    // SQLite uses a local database file. Keep a single application process.
+    instances: 1,
+    exec_mode: "fork",
+
+    autorestart: true,
+    watch: false,
+    restart_delay: 3000,
+    max_restarts: 10,
+    min_uptime: "10s",
+    kill_timeout: 10000,
+    time: true,
+
+    env_production: {
+      NODE_ENV: "production",
+      PORT: getPort(),
     },
-  ],
-};
+  },
+];
