@@ -8,6 +8,7 @@ import type {
   OrganizationId,
 } from "@/lib/election";
 import AdminDashboard from "@/app/admin-dashboard";
+import StudentVoterArt from "@/app/student-voter-art";
 
 type Candidate = {
   id: string;
@@ -636,7 +637,7 @@ export default function VotingApp({ mode }: { mode: "guest" | "kelas12" }) {
   if (!role) {
     const isAdminLogin = nis.trim().toLocaleLowerCase("en-US") === "admin";
     return (
-      <main className="grid min-h-screen place-items-center bg-[radial-gradient(ellipse_at_5%_90%,rgba(226,58,76,.09),transparent_34%),radial-gradient(ellipse_at_96%_8%,rgba(245,196,199,.35),transparent_31%),linear-gradient(135deg,#fff_15%,#fffafa_65%,#fff4f5)] px-6 pt-6 pb-5 motion-safe:animate-rise-in max-[760px]:px-[18px] max-[760px]:py-2 max-[420px]:px-3 [@media(max-height:700px)]:[padding-top:12px] [@media(max-height:700px)]:[padding-bottom:12px]">
+      <main className={`grid min-h-screen place-items-center px-6 pt-6 pb-5 motion-safe:animate-rise-in max-[760px]:px-[18px] max-[760px]:py-2 max-[420px]:px-3 [@media(max-height:700px)]:[padding-top:12px] [@media(max-height:700px)]:[padding-bottom:12px] ${isGuest ? "bg-[radial-gradient(ellipse_at_5%_90%,rgba(226,58,76,.09),transparent_34%),radial-gradient(ellipse_at_96%_8%,rgba(245,196,199,.35),transparent_31%),linear-gradient(135deg,#fff_15%,#fffafa_65%,#fff4f5)]" : "student-login-page"}`}>
         <div className="w-[min(1054px,100%)]">
           <a className="brand [display:inline-flex] [align-items:center] [gap:10px]" href="#" aria-label="Suara Mandara">
             <Image
@@ -653,8 +654,8 @@ export default function VotingApp({ mode }: { mode: "guest" | "kelas12" }) {
             </span>
           </a>
 
-          <section className="grid min-h-[570px] grid-cols-[1.04fr_.96fr] overflow-hidden rounded-[17px] border border-[rgba(218,74,91,.1)] bg-white shadow-[0_24px_72px_rgba(109,41,47,.09),0_2px_8px_rgba(109,41,47,.035)] max-[760px]:mx-auto max-[760px]:max-w-[490px] max-[760px]:min-h-0 max-[760px]:grid-cols-1 [@media(max-height:700px)_and_(min-width:761px)]:[min-height:500px]">
-            <div className="login-visual motion-safe:animate-rise-in [position:relative] [overflow:hidden] [display:flex] [flex-direction:column] [padding:38px_42px] [color:#492b30] [background:radial-gradient(ellipse_at_82%_72%,_rgba(216,_73,_91,_.12),_transparent_38%),_linear-gradient(145deg,_#fff_10%,_#fffafa_65%,_#fff2f3)] [&::before]:[content:''] [&::before]:[position:absolute] [&::before]:[width:290px] [&::before]:[height:290px] [&::before]:[border-radius:50%] [&::before]:[left:auto] [&::before]:[bottom:-182px] [&::before]:[background:rgba(209,_54,_72,_.07)] [&::after]:[content:''] [&::after]:[position:absolute] [&::after]:[width:145px] [&::after]:[height:145px] [&::after]:[border-radius:50%] [&::after]:[right:38px] [&::after]:[top:150px] [&::after]:[background:rgba(237,_177,_182,_.15)] [&_>_.eyebrow]:[z-index:1] [&_>_.eyebrow]:[display:flex] [&_>_.eyebrow]:[align-items:center] [&_>_.eyebrow]:[gap:9px] [&_>_.eyebrow]:[color:#97666c] max-[760px]:[display:none] [&_.live-dot]:[background:#d84c5c] [&_.live-dot]:[box-shadow:0_0_0_3px_rgba(216,_76,_92,_.13)] [&::before]:[right:-118px]" style={{ animationDelay: "90ms" }}>
+          <section className={isGuest ? "grid min-h-[570px] grid-cols-[1.04fr_.96fr] overflow-hidden rounded-[17px] border border-[rgba(218,74,91,.1)] bg-white shadow-[0_24px_72px_rgba(109,41,47,.09),0_2px_8px_rgba(109,41,47,.035)] max-[760px]:mx-auto max-[760px]:max-w-[490px] max-[760px]:min-h-0 max-[760px]:grid-cols-1 [@media(max-height:700px)_and_(min-width:761px)]:[min-height:500px]" : "student-login-shell grid min-h-[570px] grid-cols-[1.04fr_.96fr] overflow-hidden rounded-[17px] max-[760px]:mx-auto max-[760px]:max-w-[490px] max-[760px]:min-h-0 max-[760px]:grid-cols-1 [@media(max-height:700px)_and_(min-width:761px)]:[min-height:500px]"}>
+            <div className={isGuest ? "login-visual motion-safe:animate-rise-in [position:relative] [overflow:hidden] [display:flex] [flex-direction:column] [padding:38px_42px] [color:#492b30] [background:radial-gradient(ellipse_at_82%_72%,_rgba(216,_73,_91,_.12),_transparent_38%),_linear-gradient(145deg,_#fff_10%,_#fffafa_65%,_#fff2f3)] [&::before]:[content:''] [&::before]:[position:absolute] [&::before]:[width:290px] [&::before]:[height:290px] [&::before]:[border-radius:50%] [&::before]:[left:auto] [&::before]:[bottom:-182px] [&::before]:[background:rgba(209,_54,_72,_.07)] [&::after]:[content:''] [&::after]:[position:absolute] [&::after]:[width:145px] [&::after]:[height:145px] [&::after]:[border-radius:50%] [&::after]:[right:38px] [&::after]:[top:150px] [&::after]:[background:rgba(237,_177,_182,_.15)] [&_>_.eyebrow]:[z-index:1] [&_>_.eyebrow]:[display:flex] [&_>_.eyebrow]:[align-items:center] [&_>_.eyebrow]:[gap:9px] [&_>_.eyebrow]:[color:#97666c] max-[760px]:[display:none] [&_.live-dot]:[background:#d84c5c] [&_.live-dot]:[box-shadow:0_0_0_3px_rgba(216,_76,_92,_.13)] [&::before]:[right:-118px]" : "login-visual student-login-visual motion-safe:animate-rise-in"} style={{ animationDelay: "90ms" }}>
               <Image
                 src="/logo-smk-bali-mandara-large.png"
                 alt=""
@@ -664,23 +665,35 @@ export default function VotingApp({ mode }: { mode: "guest" | "kelas12" }) {
                 loading="eager"
                 className="login-school-watermark"
               />
+              {!isGuest && (
+                <StudentVoterArt
+                  variant="hero"
+                  className="student-login-art motion-safe:animate-float"
+                />
+              )}
               <span className="eyebrow [font-size:9px] [font-weight:700] [letter-spacing:1.15px]"><span className="live-dot [width:7px] [height:7px] [display:inline-block] [flex:0_0_auto] [border-radius:50%] [background:#cbe67c] [box-shadow:0_0_0_3px_rgba(203,_230,_124,_.13)]" /> PEMILIHAN KETUA DAN WAKIL ORGANISASI KESISWAAN SMKN BALI MANDARA MASA BAKTI 2026/2027</span>
-              <div className="visual-heading [z-index:1] [margin-top:40px] [&_h1]:[margin:0] [&_h1]:[color:#38252a] [&_h1]:[font:900_clamp(43px,_5vw,_59px)/1.04_'Nunito',_'DM_Sans',_sans-serif] [&_h1]:[letter-spacing:-1.8px] [&_h1_span]:[color:#c93246] [&_p]:[max-width:315px] [&_p]:[margin:20px_0_0] [&_p]:[color:#806b6c] [&_p]:[font-size:12px] [&_p]:[line-height:1.8] max-[760px]:[margin-top:24px] max-[760px]:[&_h1]:[font-size:45px] max-[760px]:[&_p]:[max-width:255px] max-[760px]:[&_p]:[margin-top:11px] max-[760px]:[&_p]:[font-size:10px] max-[420px]:[&_h1]:[font-size:40px]">
+              <div className={isGuest ? "visual-heading [z-index:1] [margin-top:40px] [&_h1]:[margin:0] [&_h1]:[color:#38252a] [&_h1]:[font:900_clamp(43px,_5vw,_59px)/1.04_'Nunito',_'DM_Sans',_sans-serif] [&_h1]:[letter-spacing:-1.8px] [&_h1_span]:[color:#c93246] [&_p]:[max-width:315px] [&_p]:[margin:20px_0_0] [&_p]:[color:#806b6c] [&_p]:[font-size:12px] [&_p]:[line-height:1.8] max-[760px]:[margin-top:24px] max-[760px]:[&_h1]:[font-size:45px] max-[760px]:[&_p]:[max-width:255px] max-[760px]:[&_p]:[margin-top:11px] max-[760px]:[&_p]:[font-size:10px] max-[420px]:[&_h1]:[font-size:40px]" : "visual-heading"}>
                 <h1>AYO PILIH<br />SESUAI ISI<br /><span>HATIMU</span></h1>
                 <p>Setiap pilihan punya arti. Yuk, tentukan pemimpin yang paling mewakili harapanmu.</p>
               </div>
-              <div className="visual-bottom [position:absolute] [inset:auto_0_0] [height:220px] [overflow:hidden] max-[760px]:[height:143px]">
-                <span className="visual-decoration visual-decoration-one motion-safe:animate-float [position:absolute] [display:block] [border-radius:50%] [pointer-events:none] [width:175px] [height:175px] [right:65px] [bottom:-112px] [background:linear-gradient(145deg,_rgba(205,_51,_70,_.12),_rgba(235,_137,_146,_.24))] max-[760px]:[width:120px] max-[760px]:[height:120px] max-[760px]:[right:35px] max-[760px]:[bottom:-72px]" aria-hidden="true" />
-                <span className="visual-decoration visual-decoration-two motion-safe:animate-float [position:absolute] [display:block] [border-radius:50%] [pointer-events:none] [width:98px] [height:98px] [right:200px] [bottom:69px] [background:linear-gradient(145deg,_rgba(226,_130,_139,_.2),_rgba(248,_226,_228,_.42))] max-[760px]:[width:67px] max-[760px]:[height:67px] max-[760px]:[right:136px] max-[760px]:[bottom:40px]" aria-hidden="true" />
-                <div className="election-note [position:absolute] [z-index:1] [right:36px] [bottom:35px] [display:flex] [align-items:center] [gap:12px] [padding:14px_18px] [border:1px_solid_rgba(202,_71,_85,_.11)] [border-radius:12px] [background:rgba(255,_255,_255,_.92)] [box-shadow:0_12px_30px_rgba(109,_41,_47,_.08)] [&_strong]:[display:block] [&_small]:[display:block] [&_strong]:[color:#584145] [&_strong]:[font-size:10px] [&_small]:[margin-top:5px] [&_small]:[color:#a17d80] [&_small]:[font-size:8px] [&_small]:[letter-spacing:.5px] max-[760px]:[right:23px] max-[760px]:[bottom:21px] max-[760px]:[gap:8px] max-[760px]:[padding:9px_11px]">
-                  <span className="election-note-icon motion-safe:animate-soft-pulse [width:34px] [height:34px] [border-radius:10px] [display:grid] [place-items:center] [color:#b93043] [background:#fff0f1] [font-size:17px] [font-weight:700] max-[760px]:[width:29px] max-[760px]:[height:29px]" aria-hidden="true">✓</span>
-                  <span><strong>Satu suara berarti</strong><small>MPK&nbsp; · &nbsp;OSIS&nbsp; · &nbsp;KY</small></span>
+              <div className={isGuest ? "visual-bottom [position:absolute] [inset:auto_0_0] [height:220px] [overflow:hidden] max-[760px]:[height:143px]" : "student-login-bottom"}>
+                {isGuest ? (
+                  <>
+                    <span className="visual-decoration visual-decoration-one motion-safe:animate-float [position:absolute] [display:block] [border-radius:50%] [pointer-events:none] [width:175px] [height:175px] [right:65px] [bottom:-112px] [background:linear-gradient(145deg,_rgba(205,_51,_70,_.12),_rgba(235,_137,_146,_.24))] max-[760px]:[width:120px] max-[760px]:[height:120px] max-[760px]:[right:35px] max-[760px]:[bottom:-72px]" aria-hidden="true" />
+                    <span className="visual-decoration visual-decoration-two motion-safe:animate-float [position:absolute] [display:block] [border-radius:50%] [pointer-events:none] [width:98px] [height:98px] [right:200px] [bottom:69px] [background:linear-gradient(145deg,_rgba(226,_130,_139,_.2),_rgba(248,_226,_228,_.42))] max-[760px]:[width:67px] max-[760px]:[height:67px] max-[760px]:[right:136px] max-[760px]:[bottom:40px]" aria-hidden="true" />
+                  </>
+                ) : null}
+                <div className={isGuest ? "election-note [position:absolute] [z-index:1] [right:36px] [bottom:35px] [display:flex] [align-items:center] [gap:12px] [padding:14px_18px] [border:1px_solid_rgba(202,_71,_85,_.11)] [border-radius:12px] [background:rgba(255,_255,_255,_.92)] [box-shadow:0_12px_30px_rgba(109,_41,_47,_.08)] [&_strong]:[display:block] [&_small]:[display:block] [&_strong]:[color:#584145] [&_strong]:[font-size:10px] [&_small]:[margin-top:5px] [&_small]:[color:#a17d80] [&_small]:[font-size:8px] [&_small]:[letter-spacing:.5px] max-[760px]:[right:23px] max-[760px]:[bottom:21px] max-[760px]:[gap:8px] max-[760px]:[padding:9px_11px]" : "election-note student-login-note"}>
+                  <span className={isGuest ? "election-note-icon motion-safe:animate-soft-pulse [width:34px] [height:34px] [border-radius:10px] [display:grid] [place-items:center] [color:#b93043] [background:#fff0f1] [font-size:17px] [font-weight:700] max-[760px]:[width:29px] max-[760px]:[height:29px]" : "election-note-icon motion-safe:animate-soft-pulse"} aria-hidden="true">✓</span>
+                  <span><strong>Satu suara berarti</strong><small>MPK • OSIS • KT</small></span>
                 </div>
-                <span className="visual-footnote [position:absolute] [right:auto] [bottom:19px] [color:#a17d80] [font-size:7px] [letter-spacing:1px] max-[760px]:[bottom:17px] max-[760px]:[right:24px] [left:42px] max-[760px]:[left:23px] max-[760px]:[max-width:125px] max-[760px]:[font-size:6px] max-[760px]:[line-height:1.5]">PEMILIHAN ORGANISASI KESISWAAN SEKOLAH</span>
+                {isGuest && (
+                  <span className="visual-footnote [position:absolute] [right:auto] [bottom:19px] [color:#a17d80] [font-size:7px] [letter-spacing:1px] max-[760px]:[bottom:17px] max-[760px]:[right:24px] [left:42px] max-[760px]:[left:23px] max-[760px]:[max-width:125px] max-[760px]:[font-size:6px] max-[760px]:[line-height:1.5]">PEMILIHAN ORGANISASI KESISWAAN SEKOLAH</span>
+                )}
               </div>
             </div>
 
-            <div className="login-form-panel motion-safe:animate-content-in [position:relative] [display:flex] [flex-direction:column] [padding:32px_42px_22px] max-[760px]:[padding:20px] max-[420px]:[padding-right:16px] max-[420px]:[padding-left:16px] [@media(max-height:700px)]:[padding-top:20px] [@media(max-height:700px)]:[padding-bottom:14px] [&_.primary-button]:[background:#c93246] [&_.primary-button:hover:not(:disabled)]:[background:#ad293b] [&_.primary-button:focus-visible]:[outline-color:#e7a0a7]" style={{ animationDelay: "180ms" }}>
+            <div className={isGuest ? "login-form-panel motion-safe:animate-content-in [position:relative] [display:flex] [flex-direction:column] [padding:32px_42px_22px] max-[760px]:[padding:20px] max-[420px]:[padding-right:16px] max-[420px]:[padding-left:16px] [@media(max-height:700px)]:[padding-top:20px] [@media(max-height:700px)]:[padding-bottom:14px] [&_.primary-button]:[background:#c93246] [&_.primary-button:hover:not(:disabled)]:[background:#ad293b] [&_.primary-button:focus-visible]:[outline-color:#e7a0a7]" : "login-form-panel student-login-form-panel motion-safe:animate-content-in"} style={{ animationDelay: "180ms" }}>
               {isGuest ? (
                 <div className="[display:flex] [flex-direction:column] [flex:1]">
                   <div className="form-topline [display:flex] [justify-content:space-between] [align-items:center] [color:#9a8587] [font-size:8px] [font-weight:700] [letter-spacing:1px]">
@@ -733,69 +746,73 @@ export default function VotingApp({ mode }: { mode: "guest" | "kelas12" }) {
                 </div>
               ) : (
                 <>
-              <div className="form-topline [display:flex] [justify-content:space-between] [align-items:center] [color:#9a8587] [font-size:8px] [font-weight:700] [letter-spacing:1px]">
-                <span>PORTAL PEMILIH</span>
-                <span className="secure-label [color:#97565f] [&_span]:[color:#cb5260]"><span>✦</span> SUARA MANDARA</span>
-              </div>
-              <div className="form-heading [position:relative] [margin-top:36px] [&_>_p]:[margin:13px_0_6px] [&_>_p]:[color:#927d7e] [&_>_p]:[font-size:12px] [&_h2]:[margin:0] [&_h2]:[color:#37282b] [&_h2]:[font:700_29px/1.16_'Manrope',_sans-serif] [&_h2]:[letter-spacing:-1.2px] max-[760px]:[margin-top:18px] [@media(max-height:700px)]:[margin-top:24px] max-[760px]:[&_h2]:[font-size:27px] [&_h2]:[font-family:'Nunito',_'DM_Sans',_sans-serif] [&_h2]:[font-weight:800]">
-                <span className="form-icon [width:25px] [height:25px] [border-radius:8px] [display:grid] [place-items:center] [color:#b63d4d] [background:#fff0f1] [font-size:16px]">↗</span>
-                <p>Selamat datang, pemilih!</p>
-                <h2>Mulai dari suaramu.</h2>
-                <span className="form-subtitle [display:block] [margin-top:10px] [color:#897a7b] [font-size:11px] [line-height:1.6]">
-                  Masukkan NIS dan password untuk melanjutkan pemilihan.
-                </span>
-              </div>
-              <form className="login-form [display:flex] [flex-direction:column] [margin-top:18px] [&_label]:[margin:0_0_7px] [&_label]:[color:#5a4548] [&_label]:[font-size:10px] [&_label]:[font-weight:700] max-[760px]:[margin-top:12px] [@media(max-height:700px)]:[margin-top:12px]" onSubmit={handleLogin}>
-                <label htmlFor="nis">Nomor Induk Siswa (NIS)</label>
-                <div className="input-wrap [height:43px] [display:flex] [align-items:center] [gap:10px] [margin-bottom:12px] [padding:0_12px] [border:1px_solid_#e8ebe4] [border-radius:7px] [background:#fffdfd] [transition:border-color_.2s,_box-shadow_.2s,_transform_.2s] [&:focus-within]:[border-color:#db7a84] [&:focus-within]:[box-shadow:0_0_0_3px_rgba(219,_122,_132,_.13)] [&:focus-within_.input-icon]:[color:#63814d] [&:focus-within_.input-icon]:[transform:scale(1.08)] [&_input]:[width:100%] [&_input]:[padding:0] [&_input]:[border:0] [&_input]:[outline:0] [&_input]:[color:#453337] [&_input]:[background:transparent] [&_input]:[font-size:10px] [&_input::placeholder]:[color:#b7a9aa] [border-color:#eee5e5]">
-                  <span className="input-icon nis-icon [color:#a37d80] [font-size:15px]" aria-hidden="true">#</span>
-                  <input
-                    id="nis"
-                    name="nis"
-                    type="text"
-                    inputMode={isAdminLogin ? "text" : "numeric"}
-                    autoCapitalize="none"
-                    autoComplete="username"
-                    placeholder="Masukkan NIS kamu"
-                    value={nis}
-                    maxLength={5}
-                    onChange={(event) => {
-                      setNis(event.target.value);
-                      setLoginError("");
-                      setPassword("");
-                    }}
-                    required
+                  <div className="form-topline">
+                    <span>PORTAL PEMILIH</span>
+                    <span className="secure-label"><span>✦</span> SUARA MANDARA</span>
+                  </div>
+                  <StudentVoterArt
+                    variant="portal"
+                    className="student-login-portal-art motion-safe:animate-float"
                   />
-                </div>
-                <label htmlFor="password">Password pemilih</label>
-                <div className="input-wrap [height:43px] [display:flex] [align-items:center] [gap:10px] [margin-bottom:16px] [padding:0_12px] [border:1px_solid_#e8ebe4] [border-radius:7px] [background:#fffdfd] [transition:border-color_.2s,_box-shadow_.2s,_transform_.2s] [&:focus-within]:[border-color:#db7a84] [&:focus-within]:[box-shadow:0_0_0_3px_rgba(219,_122,_132,_.13)] [&_input]:[width:100%] [&_input]:[padding:0] [&_input]:[border:0] [&_input]:[outline:0] [&_input]:[color:#453337] [&_input]:[background:transparent] [&_input]:[font-size:10px] [&_input::placeholder]:[color:#b7a9aa] [border-color:#eee5e5]">
-                  <span className="input-icon lock-icon [color:#a37d80] [font-size:13px]" aria-hidden="true">▣</span>
-                  <input
-                    id="password"
-                    name="password"
-                    type="password"
-                    inputMode={isAdminLogin ? undefined : "numeric"}
-                    autoComplete="current-password"
-                    placeholder="Masukkan password"
-                    value={password}
-                    onChange={(event) => setPassword(event.target.value)}
-                    maxLength={32}
-                    required
-                  />
-                </div>
-                {loginError && <p className="form-error [margin:-7px_0_10px] [color:#b6473d] [font-size:10px]" role="alert">{loginError}</p>}
-                {appError && <p className="form-error [margin:-7px_0_10px] [color:#b6473d] [font-size:10px]" role="alert">{appError}</p>}
-                <button className="primary-button login-button [height:44px] [border:0] [border-radius:7px] [display:inline-flex] [align-items:center] [justify-content:center] [gap:14px] [color:#f9faef] [background:#17483b] [font-size:10px] [font-weight:700] [cursor:pointer] [transition:background_.2s,_transform_.2s,_box-shadow_.2s,_opacity_.2s] [&:hover:not(:disabled)]:[background:#225d4b] [&:hover:not(:disabled)]:[transform:translateY(-1px)] [&:active:not(:disabled)]:[transform:translateY(0)_scale(.98)] [&:disabled]:[cursor:wait] [&:focus-visible]:[outline:3px_solid_#b5cd79] [&:focus-visible]:[outline-offset:3px] [&_span]:[font-size:15px] [&_span]:[font-weight:400]" type="submit" disabled={isSubmitting}>
-                  {isSubmitting ? "Memeriksa data..." : "Lanjut memilih"} {isSubmitting ? (
-                    <span className="button-spinner motion-safe:animate-spin [width:13px] [height:13px] [flex:0_0_auto] [border:2px_solid_rgba(255,255,255,.4)] [border-top-color:currentColor] [border-radius:50%]" aria-hidden="true" />
-                  ) : (
-                    <span aria-hidden="true">→</span>
-                  )}
-                </button>
-              </form>
-              <p className="login-hint [display:flex] [gap:8px] [margin:15px_0_0] [color:#8d7e7f] [font-size:9px] [line-height:1.5] [&_span]:[color:#cf5261] max-[760px]:[display:none] [@media(max-height:700px)]:[display:none]"><span>✳</span> Gunakan hak pilihmu dengan bijak untuk menentukan pemimpin organisasi kesiswaan.</p>
-              <p className="demo-notice [margin:8px_0_0_16px] [color:#a18e8f] [font-size:8px] max-[760px]:[display:none] [@media(max-height:700px)]:[display:none]">Setiap suara berharga. Pilih calon yang paling mewakili aspirasi siswa.</p>
-              <div className="login-footer [margin-top:auto] [padding-top:20px] [border-top:1px_solid_#f0f1ec] [display:flex] [justify-content:space-between] [color:#a28f90] [font-size:8px] [gap:10px] max-[420px]:[font-size:7px] [border-color:#f1e9e9] max-[760px]:[margin-top:12px] max-[760px]:[padding-top:10px] [@media(max-height:700px)]:[padding-top:12px]"><span>© 2026 Suara Mandara</span><span className="login-footer-credit">Dikembangkan oleh Dhika Sumarta dan Dean Putra</span></div>
+                  <div className="form-heading">
+                    <span className="form-icon">↗</span>
+                    <p>Selamat datang, pemilih!</p>
+                    <h2>Mulai dari suaramu.</h2>
+                    <span className="form-subtitle">
+                      Masukkan NIS dan password untuk melanjutkan pemilihan.
+                    </span>
+                  </div>
+                  <form className="login-form" onSubmit={handleLogin}>
+                    <label htmlFor="nis">Nomor Induk Siswa (NIS)</label>
+                    <div className="input-wrap">
+                      <span className="input-icon nis-icon" aria-hidden="true">#</span>
+                      <input
+                        id="nis"
+                        name="nis"
+                        type="text"
+                        inputMode={isAdminLogin ? "text" : "numeric"}
+                        autoCapitalize="none"
+                        autoComplete="username"
+                        placeholder="Masukkan NIS kamu"
+                        value={nis}
+                        maxLength={5}
+                        onChange={(event) => {
+                          setNis(event.target.value);
+                          setLoginError("");
+                          setPassword("");
+                        }}
+                        required
+                      />
+                    </div>
+                    <label htmlFor="password">Password pemilih</label>
+                    <div className="input-wrap">
+                      <span className="input-icon lock-icon" aria-hidden="true">▣</span>
+                      <input
+                        id="password"
+                        name="password"
+                        type="password"
+                        inputMode={isAdminLogin ? undefined : "numeric"}
+                        autoComplete="current-password"
+                        placeholder="Masukkan password"
+                        value={password}
+                        onChange={(event) => setPassword(event.target.value)}
+                        maxLength={32}
+                        required
+                      />
+                    </div>
+                    {loginError && <p className="form-error" role="alert">{loginError}</p>}
+                    {appError && <p className="form-error" role="alert">{appError}</p>}
+                    <button className="primary-button login-button" type="submit" disabled={isSubmitting}>
+                      {isSubmitting ? "Memeriksa data..." : "Lanjut memilih"} {isSubmitting ? (
+                        <span className="button-spinner motion-safe:animate-spin" aria-hidden="true" />
+                      ) : (
+                        <span aria-hidden="true">→</span>
+                      )}
+                    </button>
+                  </form>
+                  <p className="login-hint"><span>✳</span> Gunakan hak pilihmu dengan bijak untuk menentukan pemimpin organisasi kesiswaan.</p>
+                  <p className="demo-notice">Setiap suara berharga. Pilih calon yang paling mewakili aspirasi siswa.</p>
+                  <div className="login-footer"><span>© 2026 Suara Mandara</span><span className="login-footer-credit">Dikembangkan oleh Dhika Sumarta dan Dean Putra</span></div>
                 </>
               )}
             </div>
