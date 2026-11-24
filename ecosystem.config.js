@@ -1,8 +1,11 @@
 import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const projectDir = dirname(fileURLToPath(import.meta.url));
 
 function getPort() {
-  const envLocalPath = join(__dirname, ".env.local");
+  const envLocalPath = join(projectDir, ".env.local");
   let port = process.env.PORT || "3000";
 
   if (existsSync(envLocalPath)) {
@@ -12,7 +15,6 @@ function getPort() {
     if (match) {
       let value = match[1].trim();
 
-      // Support quoted values and unquoted inline comments.
       if (
         (value.startsWith("\"") && value.endsWith("\"")) ||
         (value.startsWith("'") && value.endsWith("'"))
@@ -37,9 +39,9 @@ function getPort() {
 export const apps = [
   {
     name: "suara-mandara",
-    script: join(__dirname, "node_modules", "next", "dist", "bin", "next"),
+    script: join(projectDir, "node_modules", "next", "dist", "bin", "next"),
     args: "start",
-    cwd: __dirname,
+    cwd: projectDir,
     interpreter: process.execPath,
 
     // SQLite uses a local database file. Keep a single application process.
