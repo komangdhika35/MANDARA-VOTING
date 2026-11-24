@@ -1,0 +1,19 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: "suara-mandara-app"
+    metrics_path: "/api/metrics"
+    scheme: http
+    static_configs:
+      - targets:
+          - "127.0.0.1:3000"
+    bearer_token_file: "C:/ProgramData/SuaraMandara/metrics-token.txt"
+
+  - job_name: "windows-server"
+    metrics_path: "/metrics"
+    scheme: http
+    static_configs:
+      - targets:
+          - "127.0.0.1:9182"
