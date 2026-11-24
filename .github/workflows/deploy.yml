@@ -1,0 +1,109 @@
+name: Deploy Suara Mandara to Windows Server
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:  # Allow manual trigger
+
+env:
+  APP_NAME: suara-mandara
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint (if available)
+        run: npm run lint --if-present
+        continue-on-error: true
+
+  prepare-server:
+    needs: validate
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Setup deployment directory
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.WINDOWS_SERVER_HOST }}
+          username: ${{ secrets.WINDOWS_SERVER_USER }}
+          password: ${{ secrets.WINDOWS_SERVER_PASSWORD }}
+          port: ${{ secrets.WINDOWS_SERVER_PORT || 22 }}
+          script: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -Command "if (!(Test-Path '${{ secrets.WINDOWS_DEPLOY_PATH || 'C:\suara-mandara' }}')) { New-Item -ItemType Directory -Path '${{ secrets.WINDOWS_DEPLOY_PATH || 'C:\suara-mandara' }}' -Force; cd '${{ secrets.WINDOWS_DEPLOY_PATH || 'C:\suara-mandara' }}'; git clone https://github.com/${{ github.repository }}.git . }; New-Item -ItemType Directory -Path (Join-Path '${{ secrets.WINDOWS_DEPLOY_PATH || 'C:\suara-mandara' }}' '.data') -Force"
+
+      - name: Install PM2 globally
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.WINDOWS_SERVER_HOST }}
+          username: ${{ secrets.WINDOWS_SERVER_USER }}
+          password: ${{ secrets.WINDOWS_SERVER_PASSWORD }}
+          port: ${{ secrets.WINDOWS_SERVER_PORT || 22 }}
+          script: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -Command "if (Get-Command pm2 -ErrorAction SilentlyContinue) { Write-Host 'PM2 is already installed; skipping installation.' } else { npm install -g pm2; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; npm install -g pm2-windows-startup; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE } }"
+
+  deploy-build:
+    needs: prepare-server
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Stop application
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.WINDOWS_SERVER_HOST }}
+          username: ${{ secrets.WINDOWS_SERVER_USER }}
+          password: ${{ secrets.WINDOWS_SERVER_PASSWORD }}
+          port: ${{ secrets.WINDOWS_SERVER_PORT || 22 }}
+          script: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -Command "cd '${{ secrets.WINDOWS_DEPLOY_PATH || 'C:\suara-mandara' }}'; pm2 stop suara-mandara 2>$null; pm2 delete suara-mandara 2>$null"
+
+      - name: Pull latest changes
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.WINDOWS_SERVER_HOST }}
+          username: ${{ secrets.WINDOWS_SERVER_USER }}
+          password: ${{ secrets.WINDOWS_SERVER_PASSWORD }}
+          port: ${{ secrets.WINDOWS_SERVER_PORT || 22 }}
+          script: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -Command "cd '${{ secrets.WINDOWS_DEPLOY_PATH || 'C:\suara-mandara' }}'; git config --global credential.helper store; echo 'https://${{ secrets.GITHUB_TOKEN }}@github.com' > $env:USERPROFILE\.git-credentials; git fetch origin; git checkout main; git pull origin main"
+
+      - name: Install dependencies
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.WINDOWS_SERVER_HOST }}
+          username: ${{ secrets.WINDOWS_SERVER_USER }}
+          password: ${{ secrets.WINDOWS_SERVER_PASSWORD }}
+          port: ${{ secrets.WINDOWS_SERVER_PORT || 22 }}
+          script: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -Command "cd '${{ secrets.WINDOWS_DEPLOY_PATH || 'C:\suara-mandara' }}'; npm ci"
+
+      - name: Build application
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.WINDOWS_SERVER_HOST }}
+          username: ${{ secrets.WINDOWS_SERVER_USER }}
+          password: ${{ secrets.WINDOWS_SERVER_PASSWORD }}
+          port: ${{ secrets.WINDOWS_SERVER_PORT || 22 }}
+          script: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -Command "cd '${{ secrets.WINDOWS_DEPLOY_PATH || 'C:\suara-mandara' }}'; npm run build"
+
+  start:
+    needs: deploy-build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Start application
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.WINDOWS_SERVER_HOST }}
+          username: ${{ secrets.WINDOWS_SERVER_USER }}
+          password: ${{ secrets.WINDOWS_SERVER_PASSWORD }}
+          port: ${{ secrets.WINDOWS_SERVER_PORT || 22 }}
+          script: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -Command "cd '${{ secrets.WINDOWS_DEPLOY_PATH || 'C:\suara-mandara' }}'; pm2 delete suara-mandara 2>$null; pm2 start npm --name 'suara-mandara' -- start; pm2 save; Write-Host 'Deployment completed successfully'"
