@@ -637,7 +637,7 @@ export default function VotingApp({ mode }: { mode: "guest" | "kelas12" }) {
   if (!role) {
     const isAdminLogin = nis.trim().toLocaleLowerCase("en-US") === "admin";
     return (
-      <main className={`grid min-h-screen place-items-center px-6 pt-6 pb-5 motion-safe:animate-rise-in max-[760px]:px-[18px] max-[760px]:py-2 max-[420px]:px-3 [@media(max-height:700px)]:[padding-top:12px] [@media(max-height:700px)]:[padding-bottom:12px] ${isGuest ? "bg-[radial-gradient(ellipse_at_5%_90%,rgba(226,58,76,.09),transparent_34%),radial-gradient(ellipse_at_96%_8%,rgba(245,196,199,.35),transparent_31%),linear-gradient(135deg,#fff_15%,#fffafa_65%,#fff4f5)]" : "student-login-page"}`}>
+      <main className={`grid min-h-screen place-items-center motion-safe:animate-rise-in ${isGuest ? "bg-[radial-gradient(ellipse_at_5%_90%,rgba(226,58,76,.09),transparent_34%),radial-gradient(ellipse_at_96%_8%,rgba(245,196,199,.35),transparent_31%),linear-gradient(135deg,#fff_15%,#fffafa_65%,#fff4f5)] px-6 pt-6 pb-5 max-[760px]:px-[18px] max-[760px]:py-2 max-[420px]:px-3 [@media(max-height:700px)]:[padding-top:12px] [@media(max-height:700px)]:[padding-bottom:12px]" : "student-login-page px-8 pt-6 pb-5 max-[760px]:px-[18px] max-[760px]:py-2 max-[420px]:px-3 [@media(max-height:700px)]:[padding-top:12px] [@media(max-height:700px)]:[padding-bottom:12px]"}`}>
         <div className="w-[min(1054px,100%)]">
           <a className="brand [display:inline-flex] [align-items:center] [gap:10px]" href="#" aria-label="Suara Mandara">
             <Image
