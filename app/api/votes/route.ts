@@ -4,6 +4,7 @@ import { getSessionVoter } from "@/lib/auth";
 import { getCandidateSelections } from "@/lib/candidates";
 import { getDatabase } from "@/lib/db";
 import { candidateIds, organizationIds, type OrganizationId } from "@/lib/election";
+import { voteCounter } from "@/lib/metrics";
 
 export const runtime = "nodejs";
 
@@ -98,6 +99,7 @@ export async function POST(request: Request) {
 
       database.exec("COMMIT");
       transactionOpen = false;
+      voteCounter.inc({ organization: "mpk" });
       const votedRows = database
         .prepare("SELECT organization_id FROM participation WHERE nis = ?")
         .all(voter.nis) as { organization_id: string }[];
@@ -164,6 +166,7 @@ export async function POST(request: Request) {
 
     database.exec("COMMIT");
     transactionOpen = false;
+    voteCounter.inc({ organization: organizationId });
 
     const rows = database
       .prepare("SELECT organization_id FROM participation WHERE nis = ?")
