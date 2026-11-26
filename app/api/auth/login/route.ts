@@ -4,6 +4,7 @@ import { createAdminSession, createSession } from "@/lib/auth";
 import { getCandidateSelections, getMpkSelections } from "@/lib/candidates";
 import { getDatabase } from "@/lib/db";
 import { organizationIds } from "@/lib/election";
+import { authAttemptsCounter } from "@/lib/metrics";
 
 export const runtime = "nodejs";
 
@@ -41,10 +42,12 @@ export async function POST(request: Request) {
       const submittedHash = createHash("sha256").update(body.password).digest();
       const expectedHash = createHash("sha256").update(expectedPassword).digest();
       if (!timingSafeEqual(submittedHash, expectedHash)) {
+        authAttemptsCounter.inc({ role: "admin", result: "failure" });
         return NextResponse.json({ error: "Password admin salah." }, { status: 401 });
       }
 
       await createAdminSession();
+      authAttemptsCounter.inc({ role: "admin", result: "success" });
       return NextResponse.json({ role: "admin" });
     }
 
@@ -70,6 +73,7 @@ export async function POST(request: Request) {
       .get(nis) as { nis: string; name: string } | undefined;
 
     if (!voter) {
+      authAttemptsCounter.inc({ role: "student", result: "failure" });
       return NextResponse.json(
         { error: "NIS atau password pemilih salah." },
         { status: 401 },
@@ -106,6 +110,7 @@ export async function POST(request: Request) {
     }
 
     await createSession(voter.nis);
+    authAttemptsCounter.inc({ role: "student", result: "success" });
 
     return NextResponse.json({
       voter: { name: voter.name },
