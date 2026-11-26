@@ -131,6 +131,63 @@ const organizations: {
   },
 ];
 
+/**
+ * Visi dan misi contoh untuk kartu calon MPK. Dipakai hanya ketika admin belum
+ * mengisi visi/misi calon, agar tampilan tidak kosong seperti desain awal.
+ */
+const mpkPosterPrograms = [
+  {
+    vision: "MPK yang terbuka, aspiratif, dan dekat dengan seluruh siswa.",
+    missions: ["Membuka ruang aspirasi rutin", "Menyampaikan masukan siswa secara transparan"],
+    accent: "#b76b78",
+  },
+  {
+    vision: "Mewujudkan perwakilan kelas yang aktif dan bertanggung jawab.",
+    missions: ["Mengadakan forum perwakilan kelas", "Mengawal tindak lanjut aspirasi"],
+    accent: "#5c8193",
+  },
+  {
+    vision: "Membangun lingkungan sekolah yang inklusif dan kolaboratif.",
+    missions: ["Merangkul ide dari setiap kelas", "Mendorong kegiatan kolaborasi siswa"],
+    accent: "#9b8650",
+  },
+  {
+    vision: "Menjadikan MPK sebagai jembatan komunikasi yang terpercaya.",
+    missions: ["Menyediakan kanal masukan siswa", "Menyampaikan perkembangan secara berkala"],
+    accent: "#63846b",
+  },
+  {
+    vision: "Mendorong budaya sekolah yang partisipatif dan saling menghargai.",
+    missions: ["Mengajak siswa terlibat dalam evaluasi", "Menjaga komunikasi yang santun"],
+    accent: "#b47b50",
+  },
+  {
+    vision: "Mewakili suara siswa dengan jujur, adil, dan konsisten.",
+    missions: ["Mengumpulkan pendapat secara merata", "Membahas aspirasi dengan bertanggung jawab"],
+    accent: "#796a99",
+  },
+  {
+    vision: "Menciptakan perwakilan siswa yang responsif dan terbuka.",
+    missions: ["Menampung masukan melalui pertemuan kelas", "Memberi kabar atas aspirasi yang diterima"],
+    accent: "#a65d64",
+  },
+  {
+    vision: "Menguatkan kerja sama antara siswa, kelas, dan organisasi.",
+    missions: ["Membangun koordinasi antarkelas", "Mendukung program sekolah yang positif"],
+    accent: "#528176",
+  },
+  {
+    vision: "Membawa aspirasi siswa menjadi masukan yang bermanfaat.",
+    missions: ["Mendengar tanpa membeda-bedakan", "Menyusun usulan berdasarkan kebutuhan siswa"],
+    accent: "#8e775c",
+  },
+  {
+    vision: "Mewujudkan MPK yang aktif, tertib, dan dapat dipercaya.",
+    missions: ["Menjalankan tugas perwakilan secara konsisten", "Mendorong evaluasi kegiatan yang terbuka"],
+    accent: "#687b9a",
+  },
+] as const;
+
 type VoteRecord = Partial<Record<OrganizationId, true>>;
 type MpkPosition = "chair" | "vice";
 type MpkSelections = Record<MpkPosition, string | null>;
@@ -804,7 +861,7 @@ export default function VotingApp({ mode }: { mode: "guest" | "kelas12" }) {
               <h1 id="mpk-poster-title">Kenali calon {mpkPosterPositionLabel} MPK</h1>
               <p>Pilih dengan cermat calon yang paling mewakili aspirasi kelasmu.</p>
               <div className="mpk-poster-notice [margin-top:16px] [padding:10px_12px] [border:1px_solid_#f1e2c6] [border-radius:7px] [color:#795a2d] [background:#fffaf0] [font-size:9px] [line-height:1.5]" role="note">
-                Foto yang belum diatur admin ditampilkan sebagai ilustrasi. Hanya calon terdaftar yang dapat dipilih.
+                Foto atau visi-misi yang belum diatur admin ditampilkan sebagai ilustrasi atau contoh. Hanya calon terdaftar yang dapat dipilih.
               </div>
               <span className="mpk-poster-count [position:absolute] [top:31px] [right:32px] [padding:8px_11px] [border:1px_solid_#f0d7d9] [border-radius:20px] [color:#a93646] [background:#fff] [font-size:9px] [font-weight:700] max-[760px]:[top:25px] max-[760px]:[right:18px] max-[760px]:[font-size:8px] max-[420px]:[position:static] max-[420px]:[display:inline-block] max-[420px]:[margin-top:11px]">
                 {mpkPosterCandidates.length} calon terdaftar
@@ -814,9 +871,12 @@ export default function VotingApp({ mode }: { mode: "guest" | "kelas12" }) {
             <div className="mpk-poster-grid [display:grid] [grid-template-columns:repeat(3,_minmax(0,_1fr))] [gap:16px] max-[900px]:[grid-template-columns:repeat(3,_minmax(0,_1fr))] max-[760px]:[grid-template-columns:repeat(2,_minmax(0,_1fr))] max-[760px]:[gap:10px] max-[420px]:[gap:8px] min-[1000px]:[grid-template-columns:repeat(5,_minmax(0,_1fr))] min-[1000px]:[grid-template-rows:repeat(2,_minmax(min-content,_auto))] min-[1000px]:[align-items:stretch] min-[1000px]:[gap:9px]">
               {Array.from({ length: Math.max(10, mpkPosterCandidates.length) }, (_, index) => {
                 const candidate = mpkPosterCandidates[index];
+                const program = mpkPosterPrograms[index % mpkPosterPrograms.length];
                 const candidateName =
                   candidate?.name ??
                   `Calon ${mpkPosterPositionLabel} ${index + 1}`;
+                const vision = candidate?.vision.trim() || "";
+                const mission = candidate?.mission.trim() || "";
                 const isSelected = candidate?.id === selectedCandidate;
                 return (
                   <button
@@ -864,6 +924,19 @@ export default function VotingApp({ mode }: { mode: "guest" | "kelas12" }) {
                       </strong>
                       <span className="[width:24px] [height:2px] [margin-top:5px] [border-radius:2px] [background:#eadcda]" aria-hidden="true" />
                       {!candidate && <span className="mpk-poster-unregistered [margin:4px_0_3px] [color:#a1662a] [font-size:7px] [font-weight:700] [line-height:1.4]">Belum terdaftar oleh admin</span>}
+                      <span className="candidate-profile-block [display:flex] [flex-direction:column] [gap:4px] [margin-top:10px] [padding:7px_0]">
+                        <span className="mpk-poster-copy-label [display:flex] [align-items:center] [gap:5px] [color:#a93646] [font-size:8px] [font-weight:800] [letter-spacing:.8px] [text-transform:uppercase]"><span className="[width:5px] [height:5px] [border-radius:50%] [background:#e5bfc0]" aria-hidden="true" />Visi{vision ? "" : " · Contoh"}</span>
+                        <span className="mpk-poster-vision [color:#4b5a51] [font-size:11px] [line-height:1.5] [overflow-wrap:anywhere] max-[420px]:[font-size:10px] min-[1000px]:[font-size:9px]">{vision || program.vision}</span>
+                      </span>
+                      <span className="candidate-profile-block [display:flex] [flex-direction:column] [gap:4px] [margin-top:6px] [padding:7px_0]">
+                        <span className="mpk-poster-copy-label [display:flex] [align-items:center] [gap:5px] [color:#a93646] [font-size:8px] [font-weight:800] [letter-spacing:.8px] [text-transform:uppercase]"><span className="[width:5px] [height:5px] [border-radius:50%] [background:#e5bfc0]" aria-hidden="true" />Misi{mission ? "" : " · Contoh"}</span>
+                        <span className="mpk-poster-missions [display:grid] [gap:5px] [&_>_span]:[position:relative] [&_>_span]:[padding-left:13px] [&_>_span]:[color:#4b5a51] [&_>_span]:[font-size:10px] [&_>_span]:[line-height:1.5] [&_>_span]:[overflow-wrap:anywhere] [&_>_span::before]:[position:absolute] [&_>_span::before]:[top:0] [&_>_span::before]:[left:0] [&_>_span::before]:[color:#bd3548] [&_>_span::before]:[content:'•'] max-[420px]:[&_>_span]:[font-size:9px] min-[1000px]:[font-size:9px]">
+                          {(mission
+                            ? mission.split(/\n+/).map((item) => item.trim()).filter(Boolean)
+                            : program.missions
+                          ).map((item) => <span key={item}>{item}</span>)}
+                        </span>
+                      </span>
                     </span>
                     <span className={`mpk-poster-select [display:block] [margin:11px_10px_10px] [padding:8px_5px] [border:1px_solid_#eee6e3] [border-radius:6px] [color:#738076] [font-size:8px] [font-weight:700] [text-align:center] max-[420px]:[margin-right:7px] max-[420px]:[margin-left:7px] min-[1000px]:[margin:8px_7px_7px] min-[1000px]:[padding:5px_3px] min-[1000px]:[font-size:7px] ${isSelected ? "[border-color:#bd3548] [color:#fff] [background:#bd3548]" : ""}`}>
                       {isSelected ? "✓ Dipilih" : candidate ? "Pilih calon" : "Belum tersedia"}
