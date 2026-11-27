@@ -48,6 +48,9 @@ app/
       candidates/route.ts
       results/route.ts
       reset-vote/route.ts
+      voters/
+        template/route.ts   Admin-only Excel voter template download
+        import/route.ts     Admin-only Excel voter import
   page.tsx                 Main student-facing entry point
   admin-dashboard.tsx      Admin dashboard client component
   layout.tsx               Root layout and metadata
@@ -58,6 +61,7 @@ lib/
   candidates.ts            Candidate and selection data access
   db.ts                    SQLite initialization and migrations
   election.ts              Election types, IDs, defaults, constants
+  voter-import.ts          Admin Excel template constants, normalization, password helper
   schema.sql               SQLite schema
 
 scripts/
@@ -185,7 +189,7 @@ Admin authentication uses `ADMIN_PASSWORD` from the local environment. Missing c
 
 ## 8. Student Identifiers and Importing
 
-Implementation: `scripts/import-students.mjs`, `voters`, and `voter_ids` tables.
+Implementation: `scripts/import-students.mjs`, `lib/voter-import.ts`, admin Excel template/import route handlers, `voters`, and `voter_ids` tables.
 
 The database has a canonical voter record and a separate identifier/alias table. A login identifier may therefore differ from the canonical `voters.nis` value.
 
@@ -202,6 +206,19 @@ The database has a canonical voter record and a separate identifier/alias table.
 - Recognized combined identifiers contain a 10-digit NISN and a 4-digit NIS separated by punctuation or whitespace.
 - The 10-digit NISN becomes the canonical voter key.
 - The 4-digit NIS and concatenated identifier are added as aliases alongside the NISN.
+
+### Admin Excel template and import
+
+The admin dashboard's **Daftar pemilih** section can download `template-pemilih-suara-mandara.xlsx` and upload a filled copy through protected route handlers. The template uses a `Pemilih` worksheet with `Nama`, `NIS`, and `Password` columns, one clearly marked example row, and a `Petunjuk` worksheet. The example row is ignored during import.
+
+- Both endpoints require an admin session.
+- Only `.xlsx` files up to 5 MB are accepted; imports are limited to 5,000 student rows.
+- NIS must be exactly four digits and is stored as text to preserve leading zeroes.
+- The password column is validated against the existing login convention (`NIS + 1`); passwords are not stored or used to replace the login rule.
+- The 4-digit NIS becomes the canonical `voters.nis` and its own `voter_ids` alias.
+- Reimporting an existing canonical NIS updates the name and sets the record active without removing votes.
+- A 4-digit NIS already aliased to a different canonical student is rejected; the importer does not reassign identities.
+- In-file duplicate NIS values are rejected. Students absent from the file are not deactivated.
 
 The login API currently accepts exactly four digits, so ensure imported aliases and credential expectations agree. CSV examples containing longer identifiers should not be assumed to work with the current login endpoint without checking this mismatch.
 
@@ -297,6 +314,8 @@ Avoid adding endpoints or UI that disclose individual voter selections without a
 | `PUT` | `/api/admin/candidates` | Save candidate configuration | Admin session |
 | `GET` | `/api/admin/results` | Read aggregate results and participation | Admin session |
 | `POST` | `/api/admin/reset-vote` | Reset voting records | Admin session |
+| `GET` | `/api/admin/voters/template` | Download the Excel voter import template | Admin session |
+| `POST` | `/api/admin/voters/import` | Import voters from a completed template | Admin session |
 
 Use the API handlers as the source of truth for server-side validation. Client-side UI restrictions are not a substitute for authorization or validation in route handlers.
 
@@ -317,6 +336,7 @@ It contains three client-side sections:
 
 ### Daftar pemilih
 
+- Download an Excel template with `Nama`, `NIS`, and `Password` columns and import a completed template.
 - Search by name and known identifier aliases.
 - Filter students who have participated or have not participated.
 - Distinguish incomplete MPK selections from no participation.

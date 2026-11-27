@@ -655,6 +655,11 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => Promise<v
   const [resetMessage, setResetMessage] = useState("");
   const [voterSearch, setVoterSearch] = useState("");
   const [voterCategory, setVoterCategory] = useState<"voted" | "not-voted">("voted");
+  const [voterImportError, setVoterImportError] = useState("");
+  const [voterImportMessage, setVoterImportMessage] = useState("");
+  const [importingVoters, setImportingVoters] = useState(false);
+  const [downloadingTemplate, setDownloadingTemplate] = useState(false);
+  const voterImportInputRef = useRef<HTMLInputElement>(null);
   const [candidateConfigurations, setCandidateConfigurations] =
     useState<CandidateConfigurations | null>(null);
   const [candidateCounts, setCandidateCounts] = useState<Record<"osis" | "ky", number>>({
@@ -942,6 +947,72 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => Promise<v
       setLoading(false);
     }
   }, []);
+
+  async function downloadVoterTemplate() {
+    setDownloadingTemplate(true);
+    setVoterImportError("");
+    setVoterImportMessage("");
+    try {
+      const response = await fetch("/api/admin/voters/template", { cache: "no-store" });
+      if (!response.ok) {
+        const data = (await response.json().catch(() => ({}))) as { error?: string };
+        throw new Error(data.error ?? "Template belum dapat diunduh.");
+      }
+
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "template-pemilih-suara-mandara.xlsx";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (downloadError) {
+      setVoterImportError(
+        downloadError instanceof Error
+          ? downloadError.message
+          : "Template belum dapat diunduh. Silakan coba lagi.",
+      );
+    } finally {
+      setDownloadingTemplate(false);
+    }
+  }
+
+  async function importVoters(file: File) {
+    setImportingVoters(true);
+    setVoterImportError("");
+    setVoterImportMessage("");
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const response = await fetch("/api/admin/voters/import", {
+        method: "POST",
+        body: formData,
+      });
+      const data = (await response.json().catch(() => ({}))) as {
+        error?: string;
+        message?: string;
+        notice?: string;
+      };
+      if (!response.ok) throw new Error(data.error ?? "Data pemilih belum dapat diimpor.");
+
+      setVoterImportMessage(
+        [data.message, data.notice].filter(Boolean).join(" ") ||
+          "Data pemilih berhasil diimpor.",
+      );
+      await loadResults();
+    } catch (importError) {
+      setVoterImportError(
+        importError instanceof Error
+          ? importError.message
+          : "Data pemilih belum dapat diimpor. Silakan coba lagi.",
+      );
+    } finally {
+      setImportingVoters(false);
+      if (voterImportInputRef.current) voterImportInputRef.current.value = "";
+    }
+  }
 
   async function resetAllVotes() {
     setResetting(true);
@@ -1537,24 +1608,55 @@ export default function AdminDashboard({ onLogout }: { onLogout: () => Promise<v
           {error && <p className="form-error app-error [margin:-7px_0_10px] [color:#b6473d] [font-size:10px] [width:fit-content] [margin:14px_0_0] [padding:9px_12px] [border:1px_solid_#f0d7d9] [border-radius:6px] [background:#fff7f7]" role="alert">{error}</p>}
           {resetError && <p className="form-error app-error [margin:-7px_0_10px] [color:#b6473d] [font-size:10px] [width:fit-content] [margin:14px_0_0] [padding:9px_12px] [border:1px_solid_#f0d7d9] [border-radius:6px] [background:#fff7f7]" role="alert">{resetError}</p>}
           {resetMessage && <p className="admin-reset-notice [margin:12px_0] [padding:10px_12px] [border:1px_solid_#dce9ce] [border-radius:7px] [color:#4a693c] [background:#f5faef] [font-size:10px] [line-height:1.6]" role="status">{resetMessage}</p>}
+          {voterImportError && <p className="form-error app-error [margin:12px_0] [padding:9px_12px] [border:1px_solid_#f0d7d9] [border-radius:6px] [color:#b6473d] [background:#fff7f7] [font-size:10px] [line-height:1.6]" role="alert">{voterImportError}</p>}
+          {voterImportMessage && <p className="admin-reset-notice [margin:12px_0] [padding:10px_12px] [border:1px_solid_#dce9ce] [border-radius:7px] [color:#4a693c] [background:#f5faef] [font-size:10px] [line-height:1.6]" role="status">{voterImportMessage}</p>}
           <div className="candidate-management-heading [display:flex] [align-items:center] [justify-content:space-between] [gap:16px] [padding:10px_0_16px] [&_h2]:[margin:7px_0_4px] [&_h2]:[color:#27392f] [&_h2]:[font:800_20px_'Nunito',_'DM_Sans',_sans-serif] [&_p]:[margin:0] [&_p]:[color:#838d84] [&_p]:[font-size:10px] max-[760px]:[align-items:flex-start] max-[760px]:[flex-direction:column]">
             <div>
               <span className="eyebrow dark-eyebrow [font-size:9px] [font-weight:700] [letter-spacing:1.15px] [color:#849177]">ADMINISTRASI PEMILIHAN</span>
               <h2>Daftar pemilih</h2>
-                  <p>Cari pemilih berdasarkan nama atau NIS.</p>
+                  <p>Cari pemilih berdasarkan nama atau NIS. Gunakan template Excel untuk menambah atau memperbarui data pemilih.</p>
             </div>
-            <button
-              type="button"
-              className="reset-all-votes-button [min-height:36px] [flex:0_0_auto] [padding:0_13px] [border:1px_solid_#f0d7d9] [border-radius:6px] [color:#ae3443] [background:#fff7f7] [font-size:9px] [font-weight:700] [cursor:pointer] [&:hover:not(:disabled)]:[border-color:#dfabb0] [&:hover:not(:disabled)]:[background:#ffeff0] [&:disabled]:[opacity:.55] [&:disabled]:[cursor:not-allowed]"
-              disabled={resetting || loading}
-              onClick={() => {
-                setResetError("");
-                setResetMessage("");
-                setResetAllOpen(true);
-              }}
-            >
-              Reset semua suara
-            </button>
+            <div className="[display:flex] [flex-wrap:wrap] [align-items:center] [justify-content:flex-end] [gap:8px] max-[760px]:[justify-content:flex-start]">
+              <input
+                ref={voterImportInputRef}
+                type="file"
+                accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                className="sr-only"
+                aria-label="Pilih file Excel pemilih"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (file) void importVoters(file);
+                }}
+              />
+              <button
+                type="button"
+                className="[min-height:36px] [flex:0_0_auto] [padding:0_13px] [border:1px_solid_#e4e8df] [border-radius:6px] [color:#536454] [background:#fff] [font-size:9px] [font-weight:700] [cursor:pointer] [&:hover:not(:disabled)]:[border-color:#b5cd79] [&:hover:not(:disabled)]:[background:#f8faf5] [&:disabled]:[opacity:.55] [&:disabled]:[cursor:not-allowed]"
+                disabled={downloadingTemplate || importingVoters || loading}
+                onClick={() => void downloadVoterTemplate()}
+              >
+                {downloadingTemplate ? "Mengunduh..." : "Unduh template Excel"}
+              </button>
+              <button
+                type="button"
+                className="[min-height:36px] [flex:0_0_auto] [padding:0_13px] [border:1px_solid_#dce9ce] [border-radius:6px] [color:#3f634b] [background:#f5faef] [font-size:9px] [font-weight:700] [cursor:pointer] [&:hover:not(:disabled)]:[border-color:#b5cd79] [&:hover:not(:disabled)]:[background:#eef6e5] [&:disabled]:[opacity:.55] [&:disabled]:[cursor:not-allowed]"
+                disabled={importingVoters || downloadingTemplate || loading}
+                onClick={() => voterImportInputRef.current?.click()}
+              >
+                {importingVoters ? "Mengimpor..." : "Impor Excel"}
+              </button>
+              <button
+                type="button"
+                className="reset-all-votes-button [min-height:36px] [flex:0_0_auto] [padding:0_13px] [border:1px_solid_#f0d7d9] [border-radius:6px] [color:#ae3443] [background:#fff7f7] [font-size:9px] [font-weight:700] [cursor:pointer] [&:hover:not(:disabled)]:[border-color:#dfabb0] [&:hover:not(:disabled)]:[background:#ffeff0] [&:disabled]:[opacity:.55] [&:disabled]:[cursor:not-allowed]"
+                disabled={resetting || importingVoters || loading}
+                onClick={() => {
+                  setResetError("");
+                  setResetMessage("");
+                  setResetAllOpen(true);
+                }}
+              >
+                Reset semua suara
+              </button>
+            </div>
           </div>
               <div className="[display:flex] [align-items:center] [justify-content:space-between] [gap:12px] [margin-bottom:12px] max-[600px]:[align-items:stretch] max-[600px]:[flex-direction:column]">
                 <label className="[position:relative] [flex:1] [max-width:420px] max-[600px]:[max-width:none]">
