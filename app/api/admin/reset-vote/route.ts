@@ -48,8 +48,14 @@ export async function POST(request: Request) {
         database.prepare("DELETE FROM participation").run();
         database.prepare("DELETE FROM sessions").run();
         // Pemilih tamu ikut dihapus agar penomoran "Pemilih 1" dimulai ulang.
+        // Database lama mungkin memiliki tabel kata sandi tambahan; hapus datanya bila ada.
+        const hasLegacyPasswordTable = database
+          .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'voter_passwords'")
+          .get();
+        if (hasLegacyPasswordTable) {
+          database.prepare("DELETE FROM voter_passwords WHERE nis LIKE 'GUEST-%'").run();
+        }
         database.prepare("DELETE FROM voter_ids WHERE nis LIKE 'GUEST-%'").run();
-        database.prepare("DELETE FROM voter_passwords WHERE nis LIKE 'GUEST-%'").run();
         database.prepare("DELETE FROM voters WHERE nis LIKE 'GUEST-%'").run();
 
         database.exec("COMMIT");

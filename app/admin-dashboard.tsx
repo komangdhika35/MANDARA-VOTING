@@ -451,12 +451,12 @@ function CandidatePhotoCropEditor({
   return createPortal(
     (
     <div
-      className="[position:fixed] [inset:0] [z-index:100] [display:grid] [place-items:center] [padding:20px] [background:rgba(22,35,29,.62)]"
+      className="candidate-photo-crop-backdrop [position:fixed] [inset:0] [z-index:100] [display:grid] [place-items:center] [padding:20px] [background:rgba(22,35,29,.62)]"
       role="dialog"
       aria-modal="true"
       aria-labelledby="candidate-photo-crop-title"
     >
-      <section className="[width:min(100%,_460px)] [max-height:calc(100vh_-_40px)] [overflow-y:auto] [padding:20px] [border:1px_solid_#eee6e3] [border-radius:12px] [background:#fff] [box-shadow:0_20px_60px_rgba(0,0,0,.2)]">
+      <section className="candidate-photo-crop-modal [width:min(100%,_460px)] [max-height:calc(100vh_-_40px)] [overflow-y:auto] [padding:20px] [border:1px_solid_#eee6e3] [border-radius:12px] [background:#fff] [box-shadow:0_20px_60px_rgba(0,0,0,.2)]">
         <div className="[display:flex] [align-items:flex-start] [justify-content:space-between] [gap:12px]">
           <div>
             <h2

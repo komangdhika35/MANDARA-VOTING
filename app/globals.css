@@ -257,6 +257,9 @@
   }
 
   .mpk-poster-page .mpk-poster-photo {
+    height: 100% !important;
+    min-height: 0 !important;
+    max-height: 100% !important;
     object-fit: contain !important;
   }
 
@@ -478,6 +481,172 @@
   @media (max-width: 380px) {
     .mpk-poster-page .pair-poster-profile .mpk-poster-missions > span {
       -webkit-line-clamp: 1 !important;
+    }
+  }
+
+  @media (max-width: 760px) {
+    .profile-button {
+      min-width: 0;
+    }
+
+    .profile-name {
+      min-width: 0;
+      max-width: min(36vw, 150px);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .profile-name small {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .admin-page-nav {
+      overflow-x: auto;
+      padding-bottom: 2px;
+      scrollbar-width: none;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .admin-page-nav::-webkit-scrollbar {
+      display: none;
+    }
+
+    .admin-page-nav button {
+      flex: 0 0 auto;
+      white-space: nowrap;
+    }
+
+    .app-content.pair-poster-content {
+      height: auto !important;
+      min-height: calc(100dvh - 62px - 76px);
+      overflow: visible !important;
+      padding-bottom: 92px !important;
+    }
+
+    .pair-poster-page {
+      min-height: 0 !important;
+      overflow: visible !important;
+      padding-bottom: 14px !important;
+    }
+
+    .pair-poster-grid {
+      align-items: start !important;
+    }
+  }
+
+  @media (max-width: 420px) {
+    .mpk-poster-grid,
+    .pair-poster-grid,
+    .candidate-grid {
+      grid-template-columns: minmax(0, 1fr) !important;
+      gap: 12px !important;
+    }
+
+    .mpk-poster-page .mpk-poster-portrait:not(.pair-poster-portrait) {
+      height: 180px !important;
+    }
+
+    .mpk-poster-page .pair-poster-portrait {
+      height: 190px !important;
+    }
+
+    .mpk-poster-heading {
+      margin-bottom: 14px !important;
+      padding: 14px 16px !important;
+    }
+
+    .mpk-poster-heading h1 {
+      font-size: 22px !important;
+      letter-spacing: -0.8px !important;
+    }
+
+    .mpk-poster-heading > p {
+      font-size: 9px !important;
+    }
+
+    .mpk-poster-heading > img,
+    .mpk-poster-heading .mpk-poster-notice {
+      display: none !important;
+    }
+
+    .mpk-poster-heading h1 {
+      margin: 6px 0 4px !important;
+    }
+
+    .mpk-poster-heading .mpk-poster-count {
+      margin-top: 8px !important;
+    }
+
+    .mpk-poster-card-content {
+      padding: 10px 10px 0 !important;
+    }
+
+    .mpk-poster-name {
+      min-height: 0 !important;
+      font-size: 14px !important;
+    }
+
+    .mpk-poster-vision {
+      font-size: 10px !important;
+    }
+
+    .mpk-poster-missions > span {
+      font-size: 9px !important;
+    }
+
+    .mpk-poster-action-bar {
+      flex-direction: row !important;
+      align-items: center !important;
+      min-height: 64px !important;
+      padding: 8px 12px !important;
+    }
+
+    .mpk-poster-action-copy > :first-child:not(:last-child) {
+      display: none !important;
+    }
+
+    .mpk-poster-action-copy > div {
+      gap: 2px !important;
+    }
+
+    .mpk-poster-action-copy strong {
+      font-size: 11px !important;
+    }
+
+    .mpk-poster-action-copy span {
+      font-size: 7px !important;
+    }
+
+    .mpk-poster-action-button {
+      width: auto !important;
+      max-width: 56%;
+      flex: 0 0 auto;
+      height: 40px !important;
+      min-height: 40px !important;
+      padding: 0 10px !important;
+    }
+
+    .modal-backdrop,
+    .candidate-photo-crop-backdrop {
+      padding: 12px !important;
+    }
+
+    .confirmation-modal {
+      width: 100% !important;
+      max-width: 100% !important;
+      padding: 22px 16px !important;
+    }
+
+    .candidate-photo-crop-modal {
+      max-height: calc(100dvh - 24px) !important;
+      padding: 16px !important;
+    }
+
+    .modal-actions {
+      grid-template-columns: minmax(0, 1fr) !important;
     }
   }
 }
