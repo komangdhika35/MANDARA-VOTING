@@ -23,7 +23,9 @@ Siswa masuk dengan mengisi NIS 4 digit terlebih dahulu, lalu memasukkan password
 
 Admin dapat memilih **Reset** di samping pemilih untuk menghapus suara siswa pada organisasi tersebut, atau **Reset semua** untuk menghapus semua pilihannya di MPK, OSIS, dan KY agar siswa dapat memilih ulang dari awal. Pilihan MPK yang belum lengkap tetap dapat di-reset dari daftar pemilih dengan filter **Belum memilih**. Untuk MPK, reset satu organisasi menghapus pilihan ketua dan/atau wakil yang sudah tercatat. Tindakan reset harus dikonfirmasi, memperbarui rekap suara, dan mengakhiri sesi login siswa tersebut.
 
-Untuk mengimpor daftar dari Excel, jalankan perintah berikut di terminal pada folder proyek (ganti alamat file sesuai lokasi workbook):
+Admin juga dapat mengunduh **template Excel** melalui menu **Daftar pemilih** di dashboard, lalu mengunggah file yang sudah diisi dengan tombol **Impor Excel**. Template memiliki lembar `Pemilih` dengan kolom `Nama`, `NIS`, dan `Password`, serta satu baris contoh yang akan diabaikan saat impor. NIS wajib 4 angka dan password harus sesuai aturan `NIS + 1`; password tidak disimpan terpisah. Baris dengan NIS yang sudah terdaftar akan memperbarui nama siswa tanpa menghapus suara yang sudah masuk.
+
+Untuk mengimpor daftar dari Excel melalui terminal, jalankan perintah berikut pada folder proyek (ganti alamat file sesuai lokasi workbook):
 
 ```bash
 npm run import:siswa -- "C:\Users\Nama\Downloads\daftar-siswa.xlsx"
